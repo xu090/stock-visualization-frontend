@@ -1,26 +1,43 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <router-view />
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import { debounce } from 'lodash';
 
 export default {
   name: 'App',
-  components: {
-    HelloWorld
+  mounted() {
+    const resizeHandler = debounce(() => {
+      console.log('窗口尺寸发生变化');
+    }, 200);
+
+    // 监听整个文档
+    this.resizeObserver = new ResizeObserver(resizeHandler);
+    this.resizeObserver.observe(document.body);
+  },
+  beforeUnmount() {
+    // 组件卸载时，断开监听
+    this.resizeObserver.disconnect();
   }
 }
 </script>
 
 <style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+html, body, #app {
+  height: 100%;
+  margin: 0;
 }
+
+.el-drawer {
+  z-index: 9999 !important;
+}
+.tour-popover .driver-popover-title{
+  font-weight: 900;
+}
+.tour-popover .driver-popover-description{
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 </style>
