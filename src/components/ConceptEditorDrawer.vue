@@ -13,20 +13,37 @@
           <el-input v-model="form.name" placeholder="例如：半导体、军工、AI算力" />
         </el-form-item>
 
+        <!-- ============ 成分股选择（勾选即已选） ============ -->
         <el-form-item label="成分股">
           <div class="stock-pick">
+            <!-- 顶部：数量与操作 -->
             <div class="pick-head">
-              <el-button @click="openStockSelectionDialog" type="primary" class="btn-primary">
-                <el-icon style="margin-right:6px;"><Search /></el-icon>
-                选择股票
-              </el-button>
+              <div class="pick-left">
+                <span class="pick-label">已选</span>
+                <span class="pick-num">{{ form.stockCodes.length }}</span>
+                <span class="pick-label">支</span>
+              </div>
 
-              <div class="pick-count">
-                已选 <span class="num">{{ form.stockCodes.length }}</span> 支
+              <div class="pick-actions">
+                <el-button
+                  size="small"
+                  @click="selectAllFiltered"
+                  :disabled="filteredStocks.length === 0"
+                >
+                  全选当前
+                </el-button>
+
+                <el-button
+                  size="small"
+                  @click="clearAllSelected"
+                  :disabled="form.stockCodes.length === 0"
+                >
+                  清空已选
+                </el-button>
               </div>
             </div>
 
-            <!-- 已选股票：可滚动 + 空态 -->
+            <!-- 已选股票：可滚动 + 空态（高度缩小） -->
             <div class="picked-box" :class="{ empty: !form.stockCodes.length }">
               <div v-if="form.stockCodes.length" class="picked-tags">
                 <el-tag
@@ -41,8 +58,89 @@
                 </el-tag>
               </div>
 
-              <div v-else class="empty-picked">暂无已选股票</div>
+              <div v-else class="empty-picked">暂无已选股票（在下方表格直接勾选即可）</div>
             </div>
+
+            <!-- 搜索 -->
+            <el-input
+              v-model="searchQuery"
+              placeholder="搜索（股票名称 / 代码）"
+              clearable
+              class="stock-search"
+            />
+
+            <!-- 表格：checkbox 直接绑定到 checkedCodes（它=已选code集合）
+                 ✅ 固定：勾选框 + 股票名称 + 股票代码
+                 ✅ 右侧数据横向滚动
+                 ✅ 滚动条不展示（但可滚动）
+            -->
+            <el-table
+              :data="filteredStocks"
+              stripe
+              class="stock-table scroll-hidden"
+              height="320"
+              empty-text="暂无匹配股票"
+              @row-click="toggleRowChecked"
+              :row-key="row => row.code"
+            >
+              <!-- ✅ 固定：勾选框 -->
+              <el-table-column
+                fixed="left"
+                label=""
+                width="30"
+                align="center"
+                class-name="col-check"
+              >
+                <template #default="{ row }">
+                  <el-checkbox v-model="checkedCodes" :label="row.code" @click.stop />
+                </template>
+              </el-table-column>
+
+              <!-- ✅ 固定：股票名称 -->
+              <el-table-column
+                fixed="left"
+                label="股票名称"
+                prop="stockName"
+                width="100"
+                show-overflow-tooltip
+                align="center"
+              />
+
+              <!-- ✅ 固定：股票代码（你要的） -->
+              <el-table-column
+                fixed="left"
+                label="股票代码"
+                prop="code"
+                width="100"
+                show-overflow-tooltip
+                align="center"
+              />
+
+              <!-- 下面这些列会在右侧横向滚动 -->
+              <el-table-column label="开盘" width="80" align="right">
+                <template #default="{ row }">{{ fmtPrice(row.open) }}</template>
+              </el-table-column>
+
+              <el-table-column label="收盘" width="80" align="right">
+                <template #default="{ row }">{{ fmtPrice(row.close) }}</template>
+              </el-table-column>
+
+              <el-table-column label="最高" width="80" align="right">
+                <template #default="{ row }">{{ fmtPrice(row.high) }}</template>
+              </el-table-column>
+
+              <el-table-column label="最低" width="80" align="right">
+                <template #default="{ row }">{{ fmtPrice(row.low) }}</template>
+              </el-table-column>
+
+              <el-table-column label="成交量" width="110" align="right">
+                <template #default="{ row }">{{ fmtInt(row.vol) }}</template>
+              </el-table-column>
+
+              <el-table-column label="成交额" width="120" align="right">
+                <template #default="{ row }">{{ fmtInt(row.amount) }}</template>
+              </el-table-column>
+            </el-table>
           </div>
         </el-form-item>
 
@@ -71,84 +169,14 @@
       </div>
     </template>
   </el-drawer>
-
-  <!-- ============ 选股抽屉 ============ -->
-  <el-drawer
-    v-model="stockSelectionVisible"
-    title="选择股票"
-    size="40%"
-    append-to-body
-    class="drawer stock-drawer"
-  >
-    <div class="stock-drawer-head">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索（股票名称 / 代码）"
-        clearable
-        @input="searchStocks"
-        style="width: 100%;"
-      />
-
-      <div class="stock-drawer-actions">
-        <div class="selected-info">
-          已勾选 <span class="num">{{ checkedStocks.length }}</span> 支
-        </div>
-
-        <div class="actions">
-          <el-button size="small" @click="selectAllFiltered" :disabled="filteredStocks.length === 0">
-            全选当前
-          </el-button>
-          <el-button size="small" @click="clearChecked" :disabled="checkedStocks.length === 0">
-            清空勾选
-          </el-button>
-        </div>
-      </div>
-    </div>
-
-    <el-table
-      :data="filteredStocks"
-      stripe
-      class="stock-table"
-      height="520"
-      empty-text="暂无匹配股票"
-      @row-click="toggleRowChecked"
-    >
-      <el-table-column label="" width="30" align="center">
-        <template #default="{ row }">
-          <el-checkbox v-model="checkedStocks" :label="row" :key="row.code" @click.stop />
-        </template>
-      </el-table-column>
-
-      <el-table-column label="股票名称" prop="stockName" min-width="85" />
-      <el-table-column label="股票代码" prop="code" width="80" />
-      <el-table-column label="开盘" prop="open" width="70" align="right" />
-      <el-table-column label="收盘" prop="close" width="70" align="right" />
-      <el-table-column label="最高" prop="high" width="70" align="right" />
-      <el-table-column label="最低" prop="low" width="70" align="right" />
-      <el-table-column label="成交量" prop="vol" width="82" align="right" />
-      <el-table-column label="成交额" prop="amount" width="82" align="right" />
-    </el-table>
-
-    <template #footer>
-      <div class="drawer-footer">
-        <el-button @click="stockSelectionVisible = false">关闭</el-button>
-        <el-button
-          type="primary"
-          class="btn-save"
-          @click="addSelectedStocks"
-          :disabled="checkedStocks.length === 0"
-        >
-          添加选中
-        </el-button>
-      </div>
-    </template>
-  </el-drawer>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { useStockStore } from '@/stores/stock'
+
+const stockStore = useStockStore()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -161,113 +189,188 @@ const visible = computed({
   set: (v) => emit('update:modelValue', v)
 })
 
-const drawerTitle = computed(() => (props.editing?.id ? '编辑概念' : '新建概念'))
+const isEditing = computed(() => !!props.editing?.id)
+const drawerTitle = computed(() => (isEditing.value ? '编辑概念' : '新建概念'))
 const nameRules = [{ required: true, message: '请输入概念名称', trigger: 'blur' }]
 
-/** form.stockCodes 在组件内部用“对象数组”保存（含 stockName/code），保存时再转字符串数组 */
+/** ✅ 统一 code */
+function normalizeCode(raw) {
+  if (raw == null) return ''
+  let s = String(raw).trim()
+  s = s.replace(/\.(SZ|SH)$/i, '')
+  s = s.replace(/^(sz|sh)/i, '')
+  return s
+}
+function pickNameByCode(code) {
+  const base = stockStore.getStockBaseByCode?.(code)
+  return base?.name || String(code)
+}
+
+/** 已选：对象数组 */
 const form = ref({
   id: '',
   name: '',
   description: '',
   algorithm: '',
-  stockCodes: [] // [{code,stockName,...}]
+  stockCodes: [] // [{code, stockName}]
 })
 
+/** ✅ 勾选集合（它=已选code集合） */
+const checkedCodes = ref([])
+
+/** 搜索关键字 */
+const searchQuery = ref('')
+
+/** 表格行 */
+const stockRows = computed(() => {
+  const baseList = stockStore.stockBaseList || []
+  return baseList.map((b) => {
+    const code = normalizeCode(b.code)
+    const enriched = stockStore.getStockByCodeEnriched?.(code) || { code, name: b.name }
+    return {
+      code,
+      stockName: enriched.name || b.name || code,
+      open: enriched.open,
+      close: enriched.close ?? enriched.price,
+      high: enriched.high,
+      low: enriched.low,
+      vol: enriched.volume ?? enriched.vol,
+      amount: enriched.amount
+    }
+  })
+})
+
+const filteredStocks = computed(() => {
+  const kw = (searchQuery.value || '').trim()
+  if (!kw) return stockRows.value
+  return stockRows.value.filter(
+    (s) => (s.stockName || '').includes(kw) || String(s.code).includes(kw)
+  )
+})
+
+/** ✅ 初始化：编辑时把已有 stockCodes 同步到 checkedCodes（表格默认勾选） */
 watch(
   () => props.editing,
   (val) => {
     if (val?.id) {
-      const codes =
-        Array.isArray(val.stockCodes) ? val.stockCodes :
-        Array.isArray(val.stocks) ? val.stocks.map(s => s.code) :
-        []
+      const rawCodes = Array.isArray(val.stockCodes)
+        ? val.stockCodes
+        : Array.isArray(val.stocks)
+          ? val.stocks.map((s) => s?.code)
+          : []
+
+      const codes = rawCodes
+        .map((x) => (typeof x === 'object' ? x?.code : x))
+        .map(normalizeCode)
+        .filter(Boolean)
 
       form.value = {
-        id: val.id,
+        id: String(val.id),
         name: val.name || '',
         description: val.description || '',
         algorithm: val.algorithm || '',
-        stockCodes: codes.map(c => ({ code: String(c), stockName: String(c) }))
+        stockCodes: codes.map((c) => ({ code: c, stockName: pickNameByCode(c) }))
       }
+
+      checkedCodes.value = codes.slice()
     } else {
       form.value = { id: '', name: '', description: '', algorithm: '', stockCodes: [] }
+      checkedCodes.value = []
     }
   },
   { immediate: true }
 )
 
-/** 选股抽屉（mock） */
-const stockSelectionVisible = ref(false)
-const searchQuery = ref('')
-const stockList = ref([])
-const filteredStocks = ref([])
-const checkedStocks = ref([])
+/**
+ * ✅ 核心同步逻辑：checkedCodes 一变，就把 form.stockCodes 同步成对应对象数组
+ * - 勾选 => 立即加入已选
+ * - 取消勾选 => 立即从已选移除
+ */
+watch(
+  checkedCodes,
+  (codes) => {
+    const list = Array.isArray(codes) ? codes : []
+    const normalized = list.map(normalizeCode).filter(Boolean)
 
-const fetchStocks = () => {
-  stockList.value = [
-    { code: '603861', stockName: '白云电器', open: 12.32, close: 12.73, high: 12.75, low: 12.72, vol: '50,400', amount: '641,957' },
-    { code: '688651', stockName: '盛邦安全', open: 44.84, close: 44.51, high: 44.51, low: 44.50, vol: '25,341', amount: '1,127,700' },
-    { code: '603001', stockName: '奥康国际', open: 8.85, close: 8.73, high: 8.74, low: 8.73, vol: '16,400', amount: '143,211' },
-    { code: '601811', stockName: '新华文轩', open: 13.41, close: 13.57, high: 13.57, low: 13.56, vol: '10,900', amount: '147,865' },
-    { code: '600641', stockName: '先导惠电', open: 17.72, close: 18.28, high: 18.29, low: 18.30, vol: '39,400', amount: '720,609' }
-  ]
-  filteredStocks.value = stockList.value
-}
+    // 去重但保持“勾选顺序”
+    const seen = new Set()
+    const orderedUnique = []
+    for (const c of normalized) {
+      if (seen.has(c)) continue
+      seen.add(c)
+      orderedUnique.push(c)
+    }
 
-const openStockSelectionDialog = () => {
-  stockSelectionVisible.value = true
-  fetchStocks()
-  searchQuery.value = ''
-  checkedStocks.value = []
-}
+    // 保留旧对象避免 name 抖动
+    const oldMap = new Map((form.value.stockCodes || []).map((s) => [normalizeCode(s.code), s]))
 
-const searchStocks = () => {
-  const kw = searchQuery.value.trim()
-  if (!kw) return (filteredStocks.value = stockList.value)
-  filteredStocks.value = stockList.value.filter(s =>
-    s.stockName.includes(kw) || String(s.code).includes(kw)
-  )
-}
+    form.value.stockCodes = orderedUnique.map((code) => {
+      return oldMap.get(code) || { code, stockName: pickNameByCode(code) }
+    })
+  },
+  { deep: true }
+)
 
-const selectAllFiltered = () => {
-  const map = new Map(checkedStocks.value.map(s => [s.code, s]))
-  filteredStocks.value.forEach(s => map.set(s.code, s))
-  checkedStocks.value = Array.from(map.values())
-}
-const clearChecked = () => { checkedStocks.value = [] }
-
-/** 行点击也能勾选/取消 */
+/** 行点击：勾选/取消 */
 const toggleRowChecked = (row) => {
-  if (!row?.code) return
-  const idx = checkedStocks.value.findIndex(s => String(s.code) === String(row.code))
-  if (idx >= 0) checkedStocks.value.splice(idx, 1)
-  else checkedStocks.value.push(row)
+  const code = normalizeCode(row?.code)
+  if (!code) return
+  const idx = checkedCodes.value.findIndex((c) => normalizeCode(c) === code)
+  if (idx >= 0) checkedCodes.value.splice(idx, 1)
+  else checkedCodes.value.push(code)
 }
 
-const addSelectedStocks = () => {
-  const map = new Map(form.value.stockCodes.map(s => [s.code, s]))
-  checkedStocks.value.forEach(s => map.set(s.code, s))
-  form.value.stockCodes = Array.from(map.values())
-  stockSelectionVisible.value = false
+/** 全选当前（过滤结果全部加入已选） */
+const selectAllFiltered = () => {
+  const set = new Set(checkedCodes.value.map(normalizeCode).filter(Boolean))
+  filteredStocks.value.forEach((s) => set.add(normalizeCode(s.code)))
+  // 让“原有顺序”在前，“新增”在后，体验更自然
+  const base = checkedCodes.value.map(normalizeCode).filter(Boolean)
+  const extra = Array.from(set).filter((c) => !base.includes(c))
+  checkedCodes.value = base.concat(extra)
 }
 
+/** 清空已选（等价于清空勾选） */
+const clearAllSelected = () => {
+  checkedCodes.value = []
+}
+
+/** 删除已选 tag：同步取消勾选 */
 const removePicked = (idx) => {
-  form.value.stockCodes.splice(idx, 1)
+  const removed = form.value.stockCodes?.[idx]
+  if (!removed) return
+  const code = normalizeCode(removed.code)
+  const i = checkedCodes.value.findIndex((c) => normalizeCode(c) === code)
+  if (i >= 0) checkedCodes.value.splice(i, 1)
 }
 
-/** 保存：输出标准结构 */
+/** 格式化 */
+const fmtPrice = (v) => {
+  const n = Number(v)
+  return !Number.isFinite(n) ? '--' : n.toFixed(2)
+}
+const fmtInt = (v) => {
+  const n = Number(v)
+  return !Number.isFinite(n) ? '--' : Math.round(n).toLocaleString()
+}
+
+/** 保存 */
 const save = () => {
   if (!form.value.name || !form.value.stockCodes.length) {
     ElMessage.error('概念名称和股票不能为空')
     return
   }
 
+  const isNew = !form.value.id
+
   const conceptData = {
     id: form.value.id || Date.now().toString(),
     name: form.value.name,
     description: form.value.description,
     algorithm: form.value.algorithm,
-    stockCodes: form.value.stockCodes.map(s => String(s.code))
+    stockCodes: form.value.stockCodes.map((s) => normalizeCode(s.code)),
+    isNew,
+    mode: isNew ? 'create' : 'edit'
   }
 
   visible.value = false
@@ -276,50 +379,135 @@ const save = () => {
 </script>
 
 <style scoped>
+/* ✅ 隐藏滚动条但保留滚动（通用） */
+.scroll-hidden{
+  scrollbar-width: none;      /* firefox */
+  -ms-overflow-style: none;   /* IE/Edge old */
+}
+.scroll-hidden::-webkit-scrollbar{ width: 0; height: 0; }
+
 .drawer :deep(.el-drawer__header){ font-weight: 900; }
 .drawer-body{ padding: 6px 2px 0; }
 .concept-form :deep(.el-form-item){ margin-bottom: 14px; }
 
-/* 成分股 */
-.stock-pick{ width: 100%; display:flex; flex-direction:column; gap: 10px; }
+.stock-pick{
+  width: 100%;
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+}
+
+/* 顶部 */
 .pick-head{
   display:flex;
   align-items:center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.pick-count{ font-size: 12px; color:#606266; }
-.num{ font-weight: 900; color:#1f2d3d; }
+.pick-left{
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  color:#606266;
+  font-size: 12px;
+  font-weight: 800;
+}
+.pick-label{ color:#606266; }
+.pick-num{ font-weight: 900; color:#1f2d3d; }
+.pick-tip{ color:#909399; font-weight: 700; }
 
-/* 已选区域：可滚动 */
+.pick-actions{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+
+/* 已选区域：更小高度 */
 .picked-box{
   border: 1px dashed rgba(0,0,0,.14);
   background: rgba(0,0,0,.015);
   border-radius: 12px;
-  padding: 10px;
-  max-height: 160px;
+  padding: 8px 10px;
   overflow: auto;
+  max-height: 100px;
 }
 .picked-box.empty{
   display:flex;
   align-items:center;
   justify-content:center;
-  min-height: 86px;
 }
-.picked-tags{ display:flex; flex-wrap:wrap; gap: 8px; }
+.picked-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 8px;
+}
 .picked-tag{ border-radius: 999px; }
 .empty-picked{ font-size: 12px; color:#c0c4cc; }
 
-/* 选股抽屉 */
-.stock-drawer-head{ display:flex; flex-direction:column; gap: 10px; margin-bottom: 10px; }
-.stock-drawer-actions{ display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-.selected-info{ font-size: 12px; color:#606266; }
-.actions{ display:flex; gap: 8px; }
+/* 搜索 */
+.stock-search{ margin-top: 2px; }
 
+/* ✅ 表格更紧凑：行高、padding、表头间距 */
+.stock-table :deep(.el-table__cell){
+  padding: 6px 2px;
+}
+.stock-table :deep(.el-table__header .el-table__cell){
+  padding: 6px 10px;
+  font-weight: 900;
+}
+
+/* 表格 hover */
 .stock-table :deep(.el-table__row){ cursor: pointer; }
 .stock-table :deep(.el-table__row:hover td){ background: #f5f8ff !important; }
 
+/* ✅ 只隐藏竖向滚动条 */
+.stock-table :deep(.el-scrollbar__bar.is-vertical){
+  display: none !important;
+}
+
+/* ✅ 横向滚动条保留（可选：轻微美化） */
+.stock-table :deep(.el-scrollbar__bar.is-horizontal){
+  height: 6px;          /* 横向条高度 */
+  opacity: 1;
+}
+
+.stock-table :deep(.el-scrollbar__thumb){
+  background: rgba(0,0,0,0.25);
+  border-radius: 4px;
+}
+
+/* ✅ 兼容：body/横向滚动容器也不展示滚动条 */
+.stock-table :deep(.el-table__body-wrapper),
+.stock-table :deep(.el-table__header-wrapper){
+  scrollbar-width: none;
+}
+.stock-table :deep(.el-table__body-wrapper::-webkit-scrollbar),
+.stock-table :deep(.el-table__header-wrapper::-webkit-scrollbar){
+  width: 0;
+  height: 0;
+}
+
+/* ✅ 固定列视觉更干净：给固定列右侧一个轻微阴影分隔 */
+.stock-table :deep(.el-table__fixed){
+  box-shadow: 2px 0 10px rgba(0,0,0,.04);
+}
+
+/* ✅ 勾选列更紧凑一点 */
+.stock-table :deep(.col-check .cell){
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* ✅ 名称/代码列稍微强调 */
+.stock-table :deep(.col-name .cell){
+  font-weight: 600;
+}
+.stock-table :deep(.col-code .cell){
+  font-weight: 600;
+  color: #606266;
+}
+
 .drawer-footer{ display:flex; justify-content:flex-end; gap: 10px; }
 .btn-save{ border-radius: 10px; font-weight: 900; }
-.btn-primary{ border-radius: 10px; font-weight: 800; }
 </style>

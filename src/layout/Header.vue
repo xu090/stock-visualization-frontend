@@ -1,18 +1,5 @@
 <template>
   <div class="header">
-    <!-- ✅ 左侧：Home -->
-    <router-link
-        to="/home"
-        class="brand"
-        aria-label="回到主页"
-        title="回到主页"
-        @click.prevent="goHome"
-      >
-        <el-icon class="brand-ic"><House /></el-icon>
-        <span class="brand-name">主页</span>
-    </router-link>
-
-
     <!-- ✅ 右侧：新手教程 -->
     <div class="right">
       <span class="tour-link" @click="startTour" role="button" tabindex="0">
@@ -24,7 +11,6 @@
 
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { House } from '@element-plus/icons-vue'
 import { createHomeTour } from '@/utils/homeTour'
 
 // ✅ 这些 store 在你 HomeView 里已经用过了
@@ -82,50 +68,13 @@ function goHome() {
 .header{
   width: 100%;
   display:flex;
-  justify-content: space-between;
+  justify-content: flex-end; /* 修改这里，右对齐 */
   align-items:center;
+  padding: 10px;
 }
-
-/* ✅ 左侧 */
-.left{
-  display:flex;
-  align-items:center;
-  gap: 10px;
-}
-
-.brand{
-  display:flex;
-  align-items:center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 6px;              /* 很轻，不像按钮 */
-  border-radius: 8px;
-  color: rgba(255,255,255,.96);
-  text-decoration: none;
-  user-select:none;
-  transition: background .12s ease, opacity .12s ease;
-}
-
-.brand:hover{
-  background: rgba(255,255,255,.10); /* 轻 hover，不抢眼 */
-}
-
-.brand:active{ opacity: .9; }
-
-.brand-ic{ font-size: 16px; }
-
-.brand-name{
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: .2px;
-}
-
 
 /* ✅ 右侧 link */
-.right{
-  display:flex;
-  align-items:center;
-}
+
 .tour-link{
   font-size: 13px;
   font-weight: 550;

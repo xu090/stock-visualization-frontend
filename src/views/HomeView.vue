@@ -1,7 +1,8 @@
 <template>
   <div class="concept-management">
     <div class="topbar" id="tour-topbar">
-      <!-- 搜索 -->
+
+      <!-- 搜索面板 -->
       <div class="panel panel-search" id="tour-search">
         <div class="panel-head">
           <div class="panel-title">搜索</div>
@@ -21,7 +22,7 @@
         />
       </div>
 
-      <!-- 排序 -->
+      <!-- 排序面板 -->
       <div class="panel panel-metrics" id="tour-metrics">
         <div class="metrics-row">
           <div class="metrics-left">
@@ -52,7 +53,7 @@
                 drag-class="drag"
                 class="selected-drag"
               >
-                <template #item="{ element,index }">
+                <template #item="{ element, index }">
                   <span class="chip active" :title="`优先级 ${index + 1}`">
                     <span class="rank">{{ index + 1 }}</span>
                     <span class="handle" title="拖拽">⋮⋮</span>
@@ -97,7 +98,6 @@
 
       <div class="subbar">
         <div class="subbar-left" id="tour-actions">
-          <!-- ✅ 新建概念：恢复为原来的“打开抽屉” -->
           <el-button type="primary" plain class="btn-create" @click="openCreate">
             新建概念
           </el-button>
@@ -109,9 +109,15 @@
           <el-button type="warning" plain class="btn-reset" @click="resetAll">
             全部重置
           </el-button>
+
+          <!-- 快捷筛选：只看自选 / 只看自定义 -->
+          <div class="quick-filters">
+            <el-checkbox v-model="onlyFavorites">只看自选</el-checkbox>
+            <el-checkbox v-model="onlyEditable">只看自定义</el-checkbox>
+          </div>
         </div>
 
-        <!-- ✅ 筛选摘要（包含：数值筛选 + 新闻关联筛选） -->
+        <!-- 筛选摘要 -->
         <div class="filter-pill" id="tour-filter-pill">
           <span class="filter-title">筛选</span>
           <span class="filter-text" :title="summaryPillText">{{ summaryPillText }}</span>
@@ -142,120 +148,161 @@
         </div>
       </div>
     </div>
-<!-- 概念卡片列表（✅ 无结果提示） -->
-<div class="grid-wrap" id="tour-cards">
-  <el-empty
-    v-if="displayList.length === 0"
-    description="没有找到匹配的概念"
-    class="empty"
-  >
-    <template #default>
-      <div class="empty-actions">
-        <el-button link type="primary" @click="clearSearch" :disabled="!searchQuery">
-          清空搜索
-        </el-button>
-        <el-button link type="info" @click="clearOnlyFilters" :disabled="!hasAnyFilter">
-          清空筛选
-        </el-button>
-        <el-button
-          v-if="newsConceptFilterIds.length"
-          link
-          type="warning"
-          @click="clearNewsConceptFilter"
-        >
-          清空新闻关联
-        </el-button>
-      </div>
-    </template>
-  </el-empty>
 
-  <el-row v-else :gutter="14" class="grid" justify="start">
-    <el-col
-      v-for="item in displayList"
-      :key="item.id"
-      :xs="24"
-      :sm="12"
-      :md="12"
-      :lg="8"
-      :xl="8"
-    >
-        <el-card
-          class="concept-card"
-          shadow="never"
-          :class="{ 'news-hit': isInNewsFilter(item.id) }"
-        >
-          <div class="card-top">
-            <div class="title-wrap">
-              <div class="title-line">
-                <h3 class="card-title" :title="item.name">{{ item.name }}</h3>
-                <span class="mini-tag" v-if="isFavorite(item.id)">自选</span>
-              </div>
-
-              <div class="sub-line">
-                <span class="sub-item">成分股：{{ item.stockCodes?.length ?? 0 }} 支</span>
-              </div>
-            </div>
-
-            <div class="actions">
-              <el-button type="primary" link @click="viewDetail(item)">查看详情</el-button>
-
-              <el-button type="primary" link class="fav" @click="toggleFavorite(item)">
-                <el-icon :class="{ selected: isFavorite(item.id) }"><Star /></el-icon>
-                {{ isFavorite(item.id) ? '已加入' : '加入' }}
-              </el-button>
-            </div>
+    <!-- 概念卡片列表 -->
+    <div class="grid-wrap" id="tour-cards">
+      <el-empty
+        v-if="displayList.length === 0"
+        description="没有找到匹配的概念"
+        class="empty"
+      >
+        <template #default>
+          <div class="empty-actions">
+            <el-button link type="primary" @click="clearSearch" :disabled="!searchQuery">
+              清空搜索
+            </el-button>
+            <el-button link type="info" @click="clearOnlyFilters" :disabled="!hasAnyFilter">
+              清空筛选
+            </el-button>
+            <el-button
+              v-if="newsConceptFilterIds.length"
+              link
+              type="warning"
+              @click="clearNewsConceptFilter"
+            >
+              清空新闻关联
+            </el-button>
           </div>
+        </template>
+      </el-empty>
 
-          <div class="metrics">
-            <div class="metric-row">
-              <span class="k">涨跌幅</span>
-              <span class="v">
-                <span class="chg" :class="chgClass(item.change)">
-                  <span class="arrow">{{ chgArrow(item.change) }}</span>
-                  <span class="num">{{ fmtPctAbs(item.change) }}</span>
+      <el-row v-else :gutter="14" class="grid" justify="start">
+        <el-col
+          v-for="item in displayList"
+          :key="item.id"
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          :xl="8"
+        >
+          <el-card
+            :id="`concept-${item.id}`"
+            class="concept-card clickable"
+            shadow="never"
+            :class="{
+              'news-hit': isInNewsFilter(item.id),
+              'focus-flash': isFocus(item.id)
+            }"
+            @click="viewDetail(item)"
+          >
+            <div class="card-top">
+              <div class="title-wrap">
+                <div class="title-line">
+                  <h3 class="card-title" :title="item.name">{{ item.name }}</h3>
+
+                  <el-tooltip
+                    :content="isFavorite(item.id) ? '取消自选' : '加入自选'"
+                    placement="top"
+                    effect="dark"
+                  >
+                    <el-button
+                      link
+                      class="fav-icon-btn"
+                      @click.stop="toggleFavorite(item)"
+                      :aria-label="isFavorite(item.id) ? '取消自选' : '加入自选'"
+                    >
+                      <el-icon class="fav-star" :class="{ on: isFavorite(item.id) }">
+                        <StarFilled v-if="isFavorite(item.id)" />
+                        <Star v-else />
+                      </el-icon>
+                    </el-button>
+                  </el-tooltip>
+
+                  <span class="mini-tag user" v-if="item.editable">自定义</span>
+                </div>
+
+                <div class="sub-line">
+                  <span class="sub-item">成分股：{{ item.stockCodes?.length ?? 0 }} 支</span>
+                </div>
+              </div>
+
+              <div class="actions">
+                <span class="mini-ops" v-if="item.editable">
+                  <el-button
+                    link
+                    type="info"
+                    class="icon-btn"
+                    title="编辑"
+                    @click.stop="openEdit(item)"
+                  >
+                    <el-icon><Setting /></el-icon>
+                  </el-button>
+
+                  <el-button
+                    link
+                    type="danger"
+                    class="icon-btn"
+                    title="删除"
+                    @click.stop="removeUserConcept(item)"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
                 </span>
-              </span>
+              </div>
             </div>
 
-            <div class="metric-row">
-              <span class="k">净流入</span>
-              <span class="v strong" :class="{ up: item.netInflow > 0, down: item.netInflow < 0 }">
-                {{ fmtMoneyY(item.netInflow) }}
-              </span>
-            </div>
+            <div class="metrics">
+              <div class="metric-row">
+                <span class="k">涨跌幅</span>
+                <span class="v">
+                  <span class="chg" :class="chgClass(item.change)">
+                    <span class="arrow">{{ chgArrow(item.change) }}</span>
+                    <span class="num">{{ fmtPctAbs(item.change) }}</span>
+                  </span>
+                </span>
+              </div>
 
-            <div class="metric-row">
-              <span class="k">成交额</span>
-              <span class="v strong">{{ fmtMoneyY(item.amount) }}</span>
-            </div>
+              <div class="metric-row">
+                <span class="k">净流入</span>
+                <span class="v strong" :class="{ up: item.netInflow > 0, down: item.netInflow < 0 }">
+                  {{ fmtMoneyY(item.netInflow) }}
+                </span>
+              </div>
 
-            <div class="metric-row">
-              <span class="k">量比</span>
-              <span class="v strong">{{ fmtNum(item.volRatio, 2) }}</span>
-            </div>
+              <div class="metric-row">
+                <span class="k">成交额</span>
+                <span class="v strong">{{ fmtMoneyY(item.amount) }}</span>
+              </div>
 
-            <div class="metric-row">
-              <span class="k">上涨占比</span>
-              <span class="v strong">{{ fmtUpRatio(item.upRatio) }}</span>
-            </div>
+              <div class="metric-row">
+                <span class="k">量比</span>
+                <span class="v strong">{{ fmtNum(item.volRatio, 2) }}</span>
+              </div>
 
-            <div class="metric-row">
-              <span class="k">强度/异动</span>
-              <span class="v strong">{{ item.strength ?? '--' }} / {{ item.spike5m ?? '--' }}</span>
+              <div class="metric-row">
+                <span class="k">上涨占比</span>
+                <span class="v strong">{{ fmtUpRatio(item.upRatio) }}</span>
+              </div>
+
+              <div class="metric-row">
+                <span class="k">强度/异动</span>
+                <span class="v strong">{{ item.strength ?? '--' }} / {{ item.spike5m ?? '--' }}</span>
+              </div>
             </div>
-          </div>
-      </el-card>
-    </el-col>
-  </el-row>
-</div>
-    <!-- ✅ 新建概念抽屉：保持原来一致 -->
+          </el-card>
+        </el-col>
+      </el-row>
+    </div>
+
+    <!-- 新建/编辑概念抽屉 -->
     <ConceptEditorDrawer
       v-model="drawerVisible"
       :editing="editingConcept"
       @saved="onSaved"
     />
 
-    <el-drawer v-model="filterVisible" title="筛选" size="500px">
+     <el-drawer v-model="filterVisible" title="筛选" size="500px">
       <div class="filter-form">
         <div class="f-grid">
           <div class="f-item">
@@ -327,6 +374,7 @@
       </div>
     </el-drawer>
 
+
     <SaveStrategyDialog
       v-model="saveDialogVisible"
       type="select"
@@ -338,11 +386,13 @@
   </div>
 </template>
 
+
+
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Star } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Star, StarFilled, Delete, Setting } from '@element-plus/icons-vue'
 import Draggable from 'vuedraggable'
 
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
@@ -365,6 +415,33 @@ onMounted(() => {
   autoStartHomeTourOnce({ router })
 })
 
+/** ✅ 用于定位/高亮新建项 */
+const focusConceptId = ref('')
+let focusTimer = null
+const isFocus = (id) => String(id) === String(focusConceptId.value)
+
+const scrollToConcept = (id) => {
+  const el = document.getElementById(`concept-${id}`)
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+const setFocus = async (id) => {
+  focusConceptId.value = String(id)
+  await nextTick()
+  scrollToConcept(id)
+  if (focusTimer) clearTimeout(focusTimer)
+  focusTimer = setTimeout(() => {
+    focusConceptId.value = ''
+    focusTimer = null
+  }, 2200)
+}
+
+onBeforeUnmount(() => {
+  if (focusTimer) clearTimeout(focusTimer)
+})
+
 /** ✅ 新闻关联筛选（统一走 store，强制 string 化） */
 if (!('newsConceptIds' in homeFilter)) homeFilter.newsConceptIds = []
 
@@ -384,14 +461,22 @@ function isInNewsFilter(id) {
   return newsConceptFilterIds.value.includes(String(id))
 }
 
+/** ✅ 只看自选 / 只看自定义（挂在 homeFilter 上，保证刷新也能保留） */
+if (!('onlyFavorites' in homeFilter)) homeFilter.onlyFavorites = false
+if (!('onlyEditable' in homeFilter)) homeFilter.onlyEditable = false
+
+const onlyFavorites = computed({
+  get: () => !!homeFilter.onlyFavorites,
+  set: (v) => (homeFilter.onlyFavorites = !!v)
+})
+const onlyEditable = computed({
+  get: () => !!homeFilter.onlyEditable,
+  set: (v) => (homeFilter.onlyEditable = !!v)
+})
+
+/** ✅ 单列表：直接按 id 找名称 */
 function conceptNameById(id) {
-  if (!id) return ''
-  const sid = String(id)
-  const sys = conceptStore.getConceptById?.(sid) || conceptStore.getConceptById?.(id)
-  if (sys?.name) return sys.name
-  const fav = conceptStore.getMyConceptById?.(sid) || conceptStore.getMyConceptById?.(id)
-  if (fav?.name) return fav.name
-  return ''
+  return conceptStore.getConceptById?.(id)?.name || ''
 }
 
 /** 指标定义 */
@@ -413,15 +498,31 @@ const searchQuery = computed({
 })
 const clearSearch = () => { searchQuery.value = '' }
 
-/** 保证 filters 有 max 字段 */
+/** 保证 filters 字段存在（避免 undefined） */
 const ensureFilterShape = () => {
   if (!homeFilter.filters) homeFilter.filters = {}
   const f = homeFilter.filters
+
+  if (!('minChange' in f)) f.minChange = null
   if (!('maxChange' in f)) f.maxChange = null
+
+  if (!('minNetInflowY' in f)) f.minNetInflowY = null
   if (!('maxNetInflowY' in f)) f.maxNetInflowY = null
+
+  if (!('minAmountY' in f)) f.minAmountY = null
   if (!('maxAmountY' in f)) f.maxAmountY = null
+
+  if (!('minVolRatio' in f)) f.minVolRatio = null
   if (!('maxVolRatio' in f)) f.maxVolRatio = null
+
+  if (!('minUpRatio' in f)) f.minUpRatio = null
   if (!('maxUpRatio' in f)) f.maxUpRatio = null
+
+  if (!('minStrength' in f)) f.minStrength = null
+  if (!('minSpike5m' in f)) f.minSpike5m = null
+
+  if (!('maxVolatility' in f)) f.maxVolatility = null
+  if (!('maxDrawdown20d' in f)) f.maxDrawdown20d = null
 }
 ensureFilterShape()
 
@@ -485,11 +586,17 @@ const hasAnyFilter = computed(() => {
     'minStrength','minSpike5m',
     'maxVolatility','maxDrawdown20d'
   ]
-  return keys.some(k => f[k] != null && f[k] !== '')
+  const numericHas = keys.some(k => f[k] != null && f[k] !== '')
+  return numericHas || !!onlyFavorites.value || !!onlyEditable.value
 })
 
 const clearOnlyFilters = () => {
   resetFilters()
+
+  // ✅ 清空快捷筛选
+  homeFilter.onlyFavorites = false
+  homeFilter.onlyEditable = false
+
   if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
   if ('appliedTradeStrategyId' in homeFilter) homeFilter.appliedTradeStrategyId = null
   ElMessage.success('已清空筛选')
@@ -524,6 +631,11 @@ const resetAll = () => {
   resetFilters()
   clearSort()
   clearNewsConceptFilter()
+
+  // ✅ 清空快捷筛选
+  homeFilter.onlyFavorites = false
+  homeFilter.onlyEditable = false
+
   if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
   if ('appliedTradeStrategyId' in homeFilter) homeFilter.appliedTradeStrategyId = null
   ElMessage.success('已全部重置')
@@ -552,8 +664,13 @@ const doSaveStrategy = ({ name, desc }) => {
   ElMessage.success('策略已保存')
 }
 
-/** ✅ 总览数据：只展示系统概念 */
-const baseList = computed(() => conceptStore.conceptOverviewList || [])
+/** ✅ 总览数据：单列表直接用 conceptOverviewAll */
+const baseList = computed(() => {
+  return conceptStore.conceptOverviewAll || []
+})
+
+/** ✅ 收藏（单列表：favorite 字段） */
+const isFavorite = (id) => !!conceptStore.getConceptById?.(id)?.favorite
 
 /** 筛选判断 */
 function passFilters(item, f) {
@@ -632,20 +749,33 @@ function paretoRankSort(list, metrics) {
     .map(x => x.item)
 }
 
-/** 列表（✅ 加入新闻联动筛选） */
+/** ✅ 列表：展示全部（自选永远在前） */
 const displayList = computed(() => {
   const kw = (searchQuery.value || '').trim().toLowerCase()
   const f = homeFilter.filters || {}
   let list = (baseList.value || []).slice()
 
+  // 搜索
   if (kw) list = list.filter(c => (c.name || '').toLowerCase().includes(kw))
+
+  // 数值筛选
   list = list.filter(item => passFilters(item, f))
 
+  // 新闻关联筛选
   if (newsConceptFilterIds.value.length) {
     const set = new Set(newsConceptFilterIds.value.map(String))
     list = list.filter(x => set.has(String(x.id)))
   }
 
+  // ✅ 快捷筛选：只看自选 / 只看自定义
+  if (onlyFavorites.value) {
+    list = list.filter(x => isFavorite(x.id))
+  }
+  if (onlyEditable.value) {
+    list = list.filter(x => !!x.editable)
+  }
+
+  // 排序（先按你的排序规则排好）
   const metrics = selectedMetricsSafe.value.filter(Boolean).slice(0, 3)
   if (metrics.length === 1) {
     const k = metrics[0]
@@ -653,13 +783,28 @@ const displayList = computed(() => {
   } else if (metrics.length >= 2) {
     list = paretoRankSort(list, metrics)
   }
-  return list.slice(0, 18)
+
+  // ✅ 自选概念放最前：稳定分组（不破坏组内排序）
+  const withRank = list.map((item, idx) => ({
+    item,
+    idx,
+    fav: isFavorite(item.id) ? 1 : 0
+  }))
+  withRank.sort((a, b) => {
+    if (a.fav !== b.fav) return b.fav - a.fav
+    return a.idx - b.idx
+  })
+  return withRank.map(x => x.item)
 })
 
 /** 筛选摘要 */
 const summaryFiltersText = computed(() => {
   const f = homeFilter.filters || {}
   const parts = []
+
+  // ✅ 把快捷筛选也写进摘要
+  if (onlyFavorites.value) parts.push('只看自选')
+  if (onlyEditable.value) parts.push('只看自定义')
 
   const range = (min, max, unit = '') => {
     const hasMin = min != null
@@ -697,20 +842,22 @@ const summaryPillText = computed(() => {
   return `${base} ｜ 新闻关联：${names}`
 })
 
-/** 收藏 */
-const isFavorite = (id) => conceptStore.isConceptFavorite?.(id) ?? false
 const toggleFavorite = (concept) => {
   if (!concept?.id) return
-  if (isFavorite(concept.id)) conceptStore.removeConceptFromMyConcept(concept.id)
-  else conceptStore.addConceptToMyConcept(concept)
+  if (typeof conceptStore.toggleFavorite === 'function') {
+    conceptStore.toggleFavorite(concept.id)
+    return
+  }
+  if (isFavorite(concept.id)) conceptStore.removeConceptFromMyConcept?.(concept.id)
+  else conceptStore.addConceptToMyConcept?.(concept)
 }
 
 const viewDetail = (concept) => {
   if (typeof newsStore.setConceptId === 'function') newsStore.setConceptId(String(concept.id))
-  router.push({ path: `/concept/${concept.id}`, query: { from: 'overview' } })
+  router.push({ path: `/concept/${concept.id}` })
 }
 
-/** ✅ 新建概念：保持原来一致（打开抽屉 -> 保存写 store -> 跳详情） */
+/** 新建概念 */
 const drawerVisible = ref(false)
 const editingConcept = ref(null)
 
@@ -719,12 +866,81 @@ const openCreate = () => {
   drawerVisible.value = true
 }
 
-const onSaved = (conceptData) => {
-  const existed = (conceptStore.userConcepts || []).some(c => String(c.id) === String(conceptData.id))
-  if (existed) conceptStore.updateUserConcept(conceptData)
-  else conceptStore.addUserConcept(conceptData)
+/** 编辑 */
+const openEdit = (item) => {
+  if (!item?.editable) return
+  editingConcept.value = {
+    id: item.id,
+    name: item.name,
+    description: item.description || '',
+    stockCodes: item.stockCodes || [],
+    algorithm: item.algorithm || '',
+    editable: true,
+    favorite: !!item.favorite
+  }
+  drawerVisible.value = true
+}
 
-  router.push({ path: `/concept/${conceptData.id}`, query: { from: 'overview' } })
+/** 删除 */
+const removeUserConcept = async (item) => {
+  if (!item?.editable) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除自定义概念「${item.name}」吗？删除后不可恢复。`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+
+    conceptStore.deleteUserConcept(item.id)
+
+    if (Array.isArray(homeFilter.newsConceptIds)) {
+      homeFilter.newsConceptIds = homeFilter.newsConceptIds.filter(x => String(x) !== String(item.id))
+    }
+
+    ElMessage.success('已删除')
+  } catch (e) {}
+}
+
+/** 新建/编辑保存 */
+const onSaved = async (conceptData) => {
+  const isEditFlow = !!editingConcept.value
+  const rawId = String(conceptData?.id || Date.now()).trim()
+
+  const id = isEditFlow
+    ? rawId
+    : (rawId.startsWith('user-') ? rawId : `user-${rawId}`)
+
+  const existed = !!conceptStore.getConceptById?.(id)
+
+  if (!isEditFlow && existed) {
+    ElMessage.error('该概念 ID 已存在，请换一个')
+    return
+  }
+
+  const payload = { ...conceptData, id, editable: true }
+
+  if (!isEditFlow) {
+    payload.favorite = conceptData?.favorite != null ? !!conceptData.favorite : false
+  } else if (conceptData?.favorite != null) {
+    payload.favorite = !!conceptData.favorite
+  }
+
+  if (existed) conceptStore.updateUserConcept(payload)
+  else conceptStore.addUserConcept(payload)
+
+  if (!isEditFlow) clearSearch()
+
+  ElMessage.success(isEditFlow ? '已更新概念' : '已新建概念')
+
+  await setFocus(id)
+
+  await nextTick()
+  const visibleNow = (displayList.value || []).some(x => String(x.id) === String(id))
+  if (!visibleNow) {
+    ElMessage.info('当前筛选/新闻关联可能隐藏了该概念，可清空筛选/新闻关联查看')
+  }
+
+  editingConcept.value = null
 }
 
 /** 格式化 */
@@ -766,6 +982,31 @@ const fmtUpRatio = (v) => {
 .concept-management{
   padding: 10px 12px;
   background: #f4f6f9;
+}
+
+/* ✅ 卡片可点击 */
+.concept-card.clickable{
+  cursor: pointer;
+}
+
+/* ✅ 自选星星按钮 */
+.fav-icon-btn{
+  padding: 0 !important;
+  height: 18px !important;
+  min-height: 18px;
+  line-height: 18px;
+}
+.fav-star{
+  font-size: 16px;
+  color: #c0c4cc;
+  transition: transform .15s ease, color .15s ease;
+}
+.fav-star.on{
+  color: #f59e0b;
+}
+.fav-icon-btn:hover .fav-star{
+  transform: translateY(-1px);
+  color: #f59e0b;
 }
 
 .topbar{
@@ -917,10 +1158,6 @@ const fmtUpRatio = (v) => {
   color:#606266;
 }
 
-.ghost{ opacity: .45; }
-.chosen{ box-shadow: 0 10px 18px rgba(0,0,0,.10); }
-.drag{ opacity: .9; }
-
 /* 次级操作条 */
 .subbar{
   flex: 1 1 100%;
@@ -934,11 +1171,25 @@ const fmtUpRatio = (v) => {
   display:flex;
   align-items:center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .btn-create{ height: 34px; border-radius: 10px; font-weight: 800; padding: 0 12px; }
 .btn-save{ height: 34px; border-radius: 10px; font-weight: 800; padding: 0 12px; }
 .btn-reset{ height: 34px; border-radius: 10px; font-weight: 800; padding: 0 12px; }
+
+/* ✅ 快捷筛选样式 */
+.quick-filters{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding-left: 2px;
+  margin-left: 20px;
+}
+.quick-filters :deep(.el-checkbox){
+  font-weight: 900;
+  color:#303133;
+}
 
 .filter-pill{
   display:flex;
@@ -980,7 +1231,7 @@ const fmtUpRatio = (v) => {
   box-shadow: 0 16px 34px rgba(0,0,0,.08);
 }
 
-/* ✅ 新闻关联命中：轻微强调 */
+/* ✅ 新闻关联命中 */
 .news-hit{
   border-color: rgba(103,194,58,.28);
   box-shadow: 0 16px 34px rgba(0,0,0,.07);
@@ -1010,10 +1261,30 @@ const fmtUpRatio = (v) => {
   background: rgba(64,158,255,.08);
 }
 
+.mini-tag.user{
+  color:#67c23a;
+  border:1px solid rgba(103,194,58,.25);
+  background: rgba(103,194,58,.08);
+}
+
+/* ✅ 编辑/删除按钮 */
+.mini-ops{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+}
+.icon-btn{
+  padding: 0 !important;
+  height: 18px !important;
+  min-height: 18px;
+}
+.icon-btn :deep(.el-icon){
+  font-size: 14px;
+}
+
 .sub-line{ margin-top:8px; color:#909399; font-size:13px; }
 .actions{ display:flex; align-items:center; gap:10px; }
 .actions :deep(.el-button){ padding:0; height:22px; font-weight:700; }
-.el-icon.selected{ color:#f39c12; }
 
 .metrics{ border-top:1px dashed rgba(0,0,0,.08); padding-top:10px; display:grid; gap:8px; }
 .metric-row{ display:grid; grid-template-columns:120px 1fr; align-items:center; gap:10px; }
@@ -1028,6 +1299,18 @@ const fmtUpRatio = (v) => {
 .strong{ font-size:13px; font-weight:900; color:#303133; }
 .up{ color:#f56c6c; }
 .down{ color:#67c23a; }
+
+/* ✅ 定位高亮 */
+@keyframes focusFlash {
+  0%   { box-shadow: 0 0 0 rgba(64,158,255,.0); transform: translateY(0); }
+  30%  { box-shadow: 0 0 0 4px rgba(64,158,255,.20); transform: translateY(-2px); }
+  60%  { box-shadow: 0 0 0 2px rgba(64,158,255,.10); transform: translateY(0); }
+  100% { box-shadow: 0 0 0 rgba(64,158,255,.0); transform: translateY(0); }
+}
+.focus-flash{
+  border-color: rgba(64,158,255,.35) !important;
+  animation: focusFlash 1.1s ease-in-out 0s 2;
+}
 
 /* 筛选 */
 .filter-form{ display:flex; flex-direction:column; gap:12px; margin-left: 20px; }

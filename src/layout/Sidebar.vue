@@ -1,13 +1,5 @@
 <template>
   <div class="sidebar-shell">
-    <!-- 顶部：概念 / 行业 -->
-    <div class="top-tabbar" id="tour-sidebar-tabs">
-      <el-tabs v-model="activeTopTab" class="top-tabs" stretch>
-        <el-tab-pane label="概念" name="concept" />
-        <el-tab-pane label="行业" name="industry" />
-      </el-tabs>
-    </div>
-
     <!-- 顶部快捷入口：不滚动 -->
     <div class="quick" id="tour-quick">
       <div
@@ -17,58 +9,49 @@
         @click="goTopOverview"
       >
         <div class="qi-left">
-          <el-icon class="qi-ic"><DataAnalysis /></el-icon>
-          <span class="qi-txt">{{ activeTopTab === 'concept' ? '概念总览' : '行业总览' }}</span>
+          <el-icon class="qi-ic"><HomeFilled /></el-icon>
+          <span class="qi-txt">主页</span>
         </div>
-        <el-icon class="qi-right"><ArrowRight /></el-icon>
-      </div>
-
-      <div
-        v-if="activeTopTab === 'concept'"
-        class="quick-item"
-        id="tour-quick-manage"
-        :class="{ active: route.path === '/concept-create' }"
-        @click="router.push('/concept-create')"
-      >
-        <div class="qi-left">
-          <el-icon class="qi-ic"><Document /></el-icon>
-          <span class="qi-txt">概念管理</span>
-        </div>
-        <el-icon class="qi-right"><ArrowRight /></el-icon>
       </div>
     </div>
 
     <!-- 自选区：外层不滚动，列表内部滚动 -->
     <div class="fav-wrap">
-      <!-- 概念自选 -->
+      <!-- 概念/行业列表 -->
       <section class="fav-card" id="tour-fav-concept">
         <div class="fav-head">
           <div class="fav-title">
-            <el-icon class="fav-ic"><Star /></el-icon>
-            <span>概念自选</span>
+            <el-tabs v-model="activeTopTab" class="top-tabs" stretch>
+              <el-tab-pane label="概念列表" name="concept" />
+              <el-tab-pane label="行业列表" name="industry" />
+            </el-tabs>
           </div>
-          <div class="fav-badge">{{ myConceptsEnriched.length }}</div>
         </div>
 
         <div class="fav-table-head">
-          <span class="h-name">名称</span>
+          <span class="h-name">{{ activeTopTab === 'industry' ? '行业名称' : '概念名称' }}</span>
           <span class="h-mid">涨跌幅</span>
           <span class="h-right">净流入</span>
         </div>
 
-        <!-- ✅ 内部滚动 -->
+        <!-- 内部滚动 -->
         <div class="fav-list scroll-hidden">
           <div
-            v-for="c in myConceptsEnriched"
+            v-for="c in topList"
             :key="c.id"
             class="row"
             :class="{ active: isConceptRouteActive(c.id) }"
             @click="goConcept(c.id)"
           >
             <div class="cell name">
-              <el-tooltip :content="c.name" placement="top" effect="dark">
-                <div class="name-main">{{ c.name }}</div>
-              </el-tooltip>
+              <div class="name-line">
+                <el-tooltip :content="c.name" placement="top">
+                  <div class="name-main">{{ getFormattedName(c.name) }}</div>
+                </el-tooltip>
+                <span v-if="c.__fav" class="fav-star-btn">
+                  <el-icon class="fav-star on" :size="10"><StarFilled /></el-icon>
+                </span>
+              </div>
             </div>
 
             <div class="cell mid">
@@ -85,8 +68,8 @@
             </div>
           </div>
 
-          <div v-if="myConceptsEnriched.length === 0" class="empty">
-            暂无自选概念
+          <div v-if="topList.length === 0" class="empty">
+            暂无{{ activeTopTab === 'industry' ? '行业列表' : '概念列表' }}
           </div>
         </div>
       </section>
@@ -96,9 +79,8 @@
         <div class="fav-head">
           <div class="fav-title">
             <el-icon class="fav-ic"><Tickets /></el-icon>
-            <span>股票自选</span>
+            <span>股票列表</span>
           </div>
-          <div class="fav-badge">{{ myStockEnriched.length }}</div>
         </div>
 
         <div class="fav-table-head">
@@ -107,19 +89,28 @@
           <span class="h-right">涨跌额</span>
         </div>
 
-        <!-- ✅ 内部滚动 -->
+        <!-- ✅ 内部滚动：展示全部股票，自选置顶且仅自选显示星星 -->
         <div class="fav-list scroll-hidden">
           <div
-            v-for="s in myStockEnriched"
+            v-for="s in allStockList"
             :key="s.code"
             class="row"
             :class="{ active: isStockRouteActive(s.code) }"
             @click="goStock(s.code)"
           >
             <div class="cell name">
-              <el-tooltip :content="s.name" placement="top" effect="dark">
-                <div class="name-main">{{ s.name }}</div>
-              </el-tooltip>
+              <!-- ✅ 这里保持和概念区一致：name-line + 仅自选显示星星 -->
+              <div class="name-line">
+                <el-tooltip :content="getFormattedName(s.name)" placement="top">
+                  <div class="name-main">{{ getFormattedName(s.name) }}</div>
+                </el-tooltip>
+
+                <!-- ✅ 只标注自选股票 -->
+                <span v-if="s.__fav" class="fav-star-btn">
+                  <el-icon class="fav-star on" :size="10"><StarFilled /></el-icon>
+                </span>
+              </div>
+
               <div class="name-sub">{{ s.code }}</div>
             </div>
 
@@ -137,8 +128,8 @@
             </div>
           </div>
 
-          <div v-if="myStockEnriched.length === 0" class="empty">
-            暂无自选股票
+          <div v-if="allStockList.length === 0" class="empty">
+            暂无股票
           </div>
         </div>
       </section>
@@ -151,22 +142,23 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
-import { DataAnalysis, Star, Tickets, Document, ArrowRight } from '@element-plus/icons-vue'
+
+/** ✅ 如果你项目里是全局注册 icon，这两行可以删；不影响原逻辑，只是更完整可复制 */
+import { HomeFilled, StarFilled, Tickets } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
 
-/**
- * ✅ 顶部 tab：默认 concept
- * - 行业相关路由：/industry、/industry/:id => 自动切换为 industry
- * - 概念相关路由：/home、/concept/:id、/my-concept/:id => 自动切换为 concept
- */
+/** ✅ 顶部 tab：默认 concept */
 const activeTopTab = ref('concept')
 
+/** 处理路由 -> tab 同步 */
 const isIndustryRoute = computed(() => {
   const p = route.path || ''
   return p === '/industry' || p.startsWith('/industry/')
@@ -180,50 +172,78 @@ watch(
   { immediate: true }
 )
 
-/**
- * ✅ 点击 tab：跳到对应总览（让用户感受到“切换分类”）
- * - concept -> /home
- * - industry -> /industry
- */
-watch(activeTopTab, (tab) => {
-  const p = route.path || ''
-  if (tab === '/home') {
-    if (p !== '/home' && !p.startsWith('/home/')) router.push('/home')
-  } else {
-    // 回概念总览：用 /home（你现在总览页）
-    if (p !== '/home' && !p.startsWith('/concept/') && !p.startsWith('/my-concept/')) {
-      router.push('/home')
-    }
+const getFormattedName = (name) => {
+  if (name.length > 5) {
+    return name.slice(0, 2) + '...' + name.slice(-2);
   }
+  return name;
+}
+
+/** ✅ “全部概念”列表数据源（优先 conceptOverviewAll） */
+const allConceptOverview = computed(() => {
+  // if (activeTopTab.value === 'industry') {
+  //   return conceptStore.industryOverviewAll || conceptStore.industryOverviewList || []
+  // }
+  return conceptStore.conceptOverviewAll || conceptStore.conceptOverviewList || []
 })
 
-/** ✅ 概念自选补齐指标：从 conceptOverviewList 取 change/netInflow */
-const overviewMap = computed(() => {
-  const map = Object.create(null)
-  ;(conceptStore.conceptOverviewList || []).forEach(c => { map[String(c.id)] = c })
-  return map
-})
-
-const myConceptsEnriched = computed(() => {
+/** ✅ 自选概念 id 集合 */
+const favConceptIdSet = computed(() => {
   const list = Array.isArray(conceptStore.myConceptList) ? conceptStore.myConceptList : []
-  return list.map(c => {
-    const id = String(c.id)
-    const ov = overviewMap.value[id] || {}
-    return {
-      ...c,
-      id,
-      change: ov.change ?? c.change ?? 0,
-      netInflow: ov.netInflow ?? c.netInflow ?? 0,
+  const set = new Set()
+  list.forEach(x => set.add(String(x?.id)))
+  return set
+})
 
-      // 兼容字段
-      change5d: ov.change5d ?? ov.rtChange5d ?? ov.change5m ?? ov.change ?? 0,
-      netInflow5d: ov.netInflow5d ?? ov.rtNetInflow ?? ov.netInflow ?? 0
-    }
+/** ✅ 列表：自选置顶 + 标注 */
+const topList = computed(() => {
+  const raw = Array.isArray(allConceptOverview.value) ? allConceptOverview.value : []
+  const favSet = favConceptIdSet.value
+
+  // 映射需要显示的字段
+  const list = raw.map((c, idx) => {
+    const id = String(c?.id ?? '')
+    const name = c?.name ?? id
+    const change = Number(c?.change ?? 0)
+    const netInflow = Number(c?.netInflow ?? 0)
+    const __fav = favSet.has(id)
+    return { ...c, id, name, change, netInflow, __fav, __idx: idx }
+  }).filter(x => x.id)
+
+  // 稳定排序：自选在前，其余保持原顺序
+  return list.sort((a, b) => {
+    if (a.__fav !== b.__fav) return a.__fav ? -1 : 1
+    return a.__idx - b.__idx
   })
 })
 
-/** 股票自选：名称/代码 + 涨跌幅/涨跌额 */
-function normalizeCode(raw) {
+/** ✅ 切换自选：兼容不同的方法名 */
+const toggleConceptFav = (concept) => {
+  const id = String(concept?.id || '')
+  if (!id) return
+
+  if (typeof conceptStore.toggleFavorite === 'function') {
+    conceptStore.toggleFavorite(id)
+    return
+  }
+
+  const isFav = favConceptIdSet.value.has(id)
+  if (isFav) {
+    if (typeof conceptStore.removeConceptFromMyConcept === 'function') {
+      conceptStore.removeConceptFromMyConcept(id)
+    } else {
+      ElMessage.warning('缺少取消自选方法')
+    }
+  } else {
+    if (typeof conceptStore.addConceptToMyConcept === 'function') {
+      conceptStore.addConceptToMyConcept({ id, name: concept?.name })
+    } else {
+      ElMessage.warning('缺少加入自选方法')
+    }
+  }
+}
+
+const normalizeCode = (raw) => {
   if (raw == null) return ''
   let s = String(raw).trim()
   s = s.replace(/\.(SZ|SH)$/i, '')
@@ -241,6 +261,10 @@ const myStocksOldSafe = computed(() => {
   return Array.isArray(list) ? list : []
 })
 
+/**
+ * ✅ 你原来的：自选股票行情（保留，不删除）
+ * 现在虽然模板不再用它渲染“股票自选”，但我不删，避免你项目其它地方引用
+ */
 const myStockEnriched = computed(() => {
   if (myStockCodesSafe.value.length) {
     return myStockCodesSafe.value
@@ -269,6 +293,40 @@ const myStockEnriched = computed(() => {
   })
 })
 
+/** ✅ 新增：展示全部股票 + 自选置顶 + 仅自选带星标 */
+const favStockCodeSet = computed(() => {
+  const set = new Set()
+  ;(myStockCodesSafe.value || []).forEach(code => set.add(normalizeCode(code)))
+  return set
+})
+
+const allStockList = computed(() => {
+  const raw = Array.isArray(stockStore?.stockBaseList) ? stockStore.stockBaseList : []
+  const favSet = favStockCodeSet.value
+
+  const list = raw.map((s, idx) => {
+    const code = normalizeCode(s?.code ?? '')
+    const base = stockStore?.getStockBaseByCode?.(code) || { code, name: s?.name || code }
+    const q = stockStore?.getStockByCodeEnriched?.(code) || {}
+    const __fav = favSet.has(code)
+
+    return {
+      code,
+      name: base?.name || q?.name || code,
+      change: Number(q?.change ?? q?.changePercent ?? 0),
+      changeAmount: Number(q?.changeAmount ?? 0),
+      __fav,
+      __idx: idx
+    }
+  }).filter(x => x.code)
+
+  // ✅ 自选在前，其余保持原顺序
+  return list.sort((a, b) => {
+    if (a.__fav !== b.__fav) return a.__fav ? -1 : 1
+    return a.__idx - b.__idx
+  })
+})
+
 /** 总览按钮状态 */
 const isActiveTop = computed(() => {
   const p = route.path || ''
@@ -277,46 +335,43 @@ const isActiveTop = computed(() => {
 })
 
 const goTopOverview = () => {
-  if (activeTopTab.value === 'industry') router.push('/industry')
-  else router.push('/home')
+  router.push('/home')
 }
 
-/** ✅ 路由高亮判断 */
+/** 路由高亮判断 */
 const isConceptRouteActive = (id) => {
   const sid = String(id)
   const p = route.path || ''
-  return p === `/concept/${sid}` || p === `/my-concept/${sid}`
+  return p === `/concept/${sid}` || p === `/my-concept/${sid}` || p === `/industry/${sid}`
 }
+
 const isStockRouteActive = (code) => {
   const c = normalizeCode(code)
   const p = route.path || ''
   return p === `/my-stocks/${c}` || p === `/stock/${c}`
 }
 
-/**
- * ✅ 你确认概念详情主路由：/concept/:id
- * - 如果你还想走 /my-concept/:id，只要把下面这行改回去即可
- */
+/** 点击：概念/行业 */
 const goConcept = (id) => {
   const sid = String(id)
   if (activeTopTab.value === 'industry') router.push(`/industry/${sid}`)
-  else router.push(`/concept/${sid}`) // ✅ 主路由
-  // else router.push(`/my-concept/${sid}`) // 兼容备选
+  else router.push(`/concept/${sid}`)
 }
 
 const goStock = (code) => router.push(`/my-stocks/${normalizeCode(code)}`)
 
-/** 格式化 */
 const arrow = (v) => {
   const n = Number(v)
   if (Number.isNaN(n) || n === 0) return '—'
   return n > 0 ? '↑' : '↓'
 }
+
 const chgClass = (v) => {
   const n = Number(v)
   if (Number.isNaN(n) || n === 0) return 'flat'
   return n > 0 ? 'up' : 'down'
 }
+
 const moneyClass = (v) => chgClass(v)
 
 const fmtPctSigned = (v) => {
@@ -324,16 +379,19 @@ const fmtPctSigned = (v) => {
   if (Number.isNaN(n)) return '--'
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 }
+
 const fmtPctAbs = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '--'
   return `${Math.abs(n).toFixed(2)}%`
 }
+
 const fmtPriceSigned = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '--'
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
 }
+
 const fmtMoneySigned = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '--'
@@ -345,6 +403,7 @@ const fmtMoneySigned = (v) => {
 }
 </script>
 
+
 <style scoped>
 /* ✅ 隐藏滚动条但保留滚动 */
 .scroll-hidden{
@@ -354,6 +413,7 @@ const fmtMoneySigned = (v) => {
 .scroll-hidden::-webkit-scrollbar{ width: 0; height: 0; }
 
 .sidebar-shell{
+  width: 220px; /* 固定 sidebar 宽度 */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -362,17 +422,44 @@ const fmtMoneySigned = (v) => {
   border-right: 1px solid rgba(0,0,0,.06);
 }
 
-/* tabs */
-.top-tabbar{
-  padding: 10px 10px 0;
-  border-bottom: 1px solid rgba(0,0,0,.06);
-  background: #fff;
-
+.top-tabs .el-tabs__header {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
 }
-.top-tabs :deep(.el-tabs__header){ margin: 0; }
-.top-tabs :deep(.el-tabs__nav-wrap::after){ height: 1px; }
 
-/* 快捷入口 */
+.top-tabs .el-tabs__header .el-tabs__item {
+  font-size: 13px; /* 增大字体 */
+  font-weight: bold;
+  color: #1f2d3d;
+  padding: 5px 10px;
+  border-radius: 6px;
+  margin: 0 5px;
+  cursor: pointer;
+}
+
+.top-tabs .el-tabs__header .el-tabs__item.is-active {
+  background-color: #eef4ff; /* 激活时背景色 */
+  color: #2f80ed; /* 激活时字体颜色 */
+  border-color: #2f80ed;
+}
+
+.top-tabs .el-tabs__header .el-tabs__item:hover {
+  background-color: #f2f6ff; /* 悬停背景色 */
+}
+
+.top-tabs .el-tabs__header .el-tabs__item.is-disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}.top-tabs :deep(.el-tabs__header){ 
+  margin: 0; 
+  margin-left: 10px; 
+  width: 100%;
+}
+.top-tabs :deep(.el-tabs__nav-wrap::after){ 
+  height: 1px; 
+}
+
 .quick{
   padding: 10px 10px 6px;
   display: grid;
@@ -403,17 +490,16 @@ const fmtMoneySigned = (v) => {
 .qi-ic{ font-size: 16px; color: #2f80ed; }
 .qi-txt{
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   color: #1f2d3d;
   white-space: nowrap;
 }
-.qi-right{ color:#c0c4cc; }
 
 /* ✅ 自选区：外层不滚动，给内部列表滚动空间 */
 .fav-wrap{
   padding: 6px 10px 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -430,11 +516,12 @@ const fmtMoneySigned = (v) => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: 100%;
 }
 
 /* 头部 */
 .fav-head{
-  height: 38px;
+  height: 36px; /* 头部高度稍微压缩 */
   padding: 0 10px;
   display:flex;
   align-items:center;
@@ -446,34 +533,23 @@ const fmtMoneySigned = (v) => {
 .fav-title{
   display:flex;
   align-items:center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 900;
+  gap: 6px; /* 缩小间距 */
+  font-size: 13px; /* 减小字体 */
+  font-weight: 600; 
   color: #1f2d3d;
 }
-.fav-ic{ color:#2f80ed; font-size: 16px; }
+.fav-ic{ color:#2f80ed; font-size: 14px; }
 
-.fav-badge{
-  min-width: 26px;
-  height: 22px;
-  padding: 0 8px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* 表头 */
 .fav-table-head{
-  height: 30px;
+  height: 28px; /* 更小的表头 */
   padding: 0 10px;
+  margin-top: 2px;
   display:grid;
-  grid-template-columns: 1fr 56px 66px;
+  grid-template-columns: 1fr 50px 60px; /* 调整列宽 */
   align-items:center;
   color:#7a8699;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 800;
   background: #f7f9fc;
   border-bottom: 1px solid rgba(0,0,0,.04);
   flex-shrink: 0;
@@ -481,7 +557,6 @@ const fmtMoneySigned = (v) => {
 .h-mid, .h-right{ text-align:right; }
 .h-name{ min-width: 0; }
 
-/* 列表 */
 .fav-list{
   flex: 1;
   min-height: 0;
@@ -492,7 +567,7 @@ const fmtMoneySigned = (v) => {
 /* 行 */
 .row{
   display:grid;
-  grid-template-columns: 1fr 56px 66px;
+  grid-template-columns: 1fr 50px 60px; /* 缩小列宽 */
   align-items:center;
   padding: 8px 6px;
   border-radius: 6px;
@@ -505,30 +580,49 @@ const fmtMoneySigned = (v) => {
   outline: 1px solid rgba(47,128,237,.16);
 }
 
-/* 名称 */
+/* 名称行：标题 + 自选标签 + 星星 */
+.name-line{
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  min-width: 0;
+}
 .name-main{
-  font-size: 13px;
-  font-weight: 900;
+  font-size: 12px; /* 减小字体 */
+  font-weight: 800;
   color: #1f2d3d;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.1;
+  min-width: 0;
 }
 .name-sub{
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 9px;
   color: #98a2b3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* 星星按钮 */
+.fav-star-btn{
+ margin-bottom: 3px;
+ margin-left: -4px;
+}
+
+.fav-star.on{ color:#f59e0b; }
+.fav-star-btn:hover .fav-star{
+  transform: translateY(-1px);
+  color:#f59e0b;
+}
+
 /* 数字 */
 .cell.mid, .cell.right{ text-align:right; }
 .num{
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: 11px; /* 缩小字体 */
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -536,7 +630,7 @@ const fmtMoneySigned = (v) => {
   white-space: nowrap;
 }
 .arrow{
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
   opacity: .95;
 }
