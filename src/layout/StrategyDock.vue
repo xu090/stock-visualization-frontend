@@ -6,6 +6,9 @@
         <span class="strategy-title">策略中心</span>
 
         <div class="h-top-actions" id="tour-strategy-save">
+          <el-button class="btn-mini" size="small" plain @click="allDialogVisible = true">
+            全部策略
+          </el-button>
           <el-button class="btn-mini" size="small" type="primary" plain @click="openCreate('select')">
             保存选股
           </el-button>
@@ -19,7 +22,12 @@
       <div class="h-current" id="tour-strategy-current">
         <div class="cur-row">
           <span class="cur-label">选股</span>
-          <span class="cur-name" :title="currentAppliedSelectName || '无'">
+          <span
+            class="cur-name"
+            :class="{ clickable: !!currentAppliedSelectId }"
+            :title="currentAppliedSelectName || '无'"
+            @click="jumpToApplied('select')"
+          >
             {{ currentAppliedSelectName || '无' }}
           </span>
           <el-button
@@ -35,7 +43,12 @@
 
         <div class="cur-row">
           <span class="cur-label">交易</span>
-          <span class="cur-name" :title="currentAppliedTradeName || '无'">
+          <span
+            class="cur-name"
+            :class="{ clickable: !!currentAppliedTradeId }"
+            :title="currentAppliedTradeName || '无'"
+            @click="jumpToApplied('trade')"
+          >
             {{ currentAppliedTradeName || '无' }}
           </span>
           <el-button
@@ -57,17 +70,18 @@
       <div class="section">
         <div class="section-head">
           <span class="section-title">选股策略</span>
-          <span class="section-sub">{{ enabledCount('select') }}/{{ totalCount('select') }}</span>
+          <span class="section-sub">收藏 {{ selectFavoriteCount }} / 自定义 {{ selectCustomCount }}</span>
         </div>
 
-        <div class="strategy-list">
+        <div class="strategy-list" v-if="selectMineStrategies.length">
           <el-popover
-            v-for="(s, idx) in strategyStore.selectStrategies"
+            v-for="s in selectMineStrategies"
             :key="`sel-${s.id}`"
             placement="right-start"
             :width="360"
             trigger="click"
             :show-arrow="true"
+            :popper-options="fixedPopperOptions"
             :popper-class="'strategy-popover'"
             @show="setActivePopover('select', s, getSelEl(s.id))"
             @hide="clearActivePopover"
@@ -77,16 +91,27 @@
                 class="strategy-item"
                 :ref="(el) => setSelRef(s.id, el)"
                 :class="{
-                  applied: s.id === currentAppliedSelectId,
-                  disabled: !s.enabled
+                  applied: s.id === currentAppliedSelectId
                 }"
               >
                 <!-- 点击卡片：打开 Popover（reference） -->
                 <div class="s-main">
                   <div class="s-line1">
                     <span class="s-name" :title="s.name">{{ s.name }}</span>
-                    <span v-if="s.id === currentAppliedSelectId" class="badge">已应用</span>
-                    <span v-else-if="!s.enabled" class="badge off">停用</span>
+                    <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
+                    <span v-if="s.id === currentAppliedSelectId" class="badge">应用</span>
+                    <button
+                      class="star-btn"
+                      type="button"
+                      :title="s.isFavorite ? '取消收藏' : '收藏'"
+                      @click.stop="toggleFavorite('select', s)"
+                    >
+                      <el-icon class="star-icon" :class="{ on: s.isFavorite }">
+                        <StarFilled v-if="s.isFavorite" />
+                        <Star v-else />
+                      </el-icon>
+                    </button>
+                    
                   </div>
 
                   <div class="s-line2" v-if="s.snapshot">
@@ -109,7 +134,6 @@
                     size="small"
                     type="primary"
                     :plain="s.id !== currentAppliedSelectId"
-                    :disabled="(!s.enabled) && (s.id !== currentAppliedSelectId)"
                     @click="toggleApply('select', s)"
                   >
                     {{ s.id === currentAppliedSelectId ? '取消' : '应用' }}
@@ -161,23 +185,28 @@
             </div>
           </el-popover>
         </div>
+
+        <div v-else class="empty-trade">
+          <div class="empty-title">暂无选股策略</div>
+          <div class="empty-sub">当前只展示“收藏”或“自建”策略，可在“全部策略”中收藏。</div>
+        </div>
       </div>
 
       <!-- 交易策略 -->
       <div class="section">
         <div class="section-head">
           <span class="section-title">交易策略</span>
-          <span class="section-sub">{{ enabledCount('trade') }}/{{ totalCount('trade') }}</span>
         </div>
 
-        <div class="strategy-list" v-if="strategyStore.tradeStrategies?.length">
+        <div class="strategy-list" v-if="tradeMineStrategies.length">
           <el-popover
-            v-for="s in strategyStore.tradeStrategies"
+            v-for="s in tradeMineStrategies"
             :key="`tr-${s.id}`"
             placement="right-start"
             :width="360"
             trigger="click"
             :show-arrow="true"
+            :popper-options="fixedPopperOptions"
             :popper-class="'strategy-popover'"
             @show="setActivePopover('trade', s, getTrEl(s.id))"
             @hide="clearActivePopover"
@@ -187,15 +216,26 @@
                 class="strategy-item"
                 :ref="(el) => setTrRef(s.id, el)"
                 :class="{
-                  applied: s.id === currentAppliedTradeId,
-                  disabled: !s.enabled
+                  applied: s.id === currentAppliedTradeId
                 }"
               >
                 <div class="s-main">
                   <div class="s-line1">
                     <span class="s-name" :title="s.name">{{ s.name }}</span>
-                    <span v-if="s.id === currentAppliedTradeId" class="badge">已应用</span>
-                    <span v-else-if="!s.enabled" class="badge off">停用</span>
+                    <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
+                    <span v-if="s.id === currentAppliedTradeId" class="badge">应用</span>
+                    <button
+                      class="star-btn"
+                      type="button"
+                      :title="s.isFavorite ? '取消收藏' : '收藏'"
+                      @click.stop="toggleFavorite('trade', s)"
+                    >
+                      <el-icon class="star-icon" :class="{ on: s.isFavorite }">
+                        <StarFilled v-if="s.isFavorite" />
+                        <Star v-else />
+                      </el-icon>
+                    </button>
+                    
                   </div>
 
                   <div class="s-line2" v-if="s.snapshot">
@@ -213,7 +253,6 @@
                     size="small"
                     type="primary"
                     :plain="s.id !== currentAppliedTradeId"
-                    :disabled="(!s.enabled) && (s.id !== currentAppliedTradeId)"
                     @click="toggleApply('trade', s)"
                   >
                     {{ s.id === currentAppliedTradeId ? '取消' : '应用' }}
@@ -262,10 +301,25 @@
 
         <div v-else class="empty-trade">
           <div class="empty-title">暂无交易策略</div>
-          <div class="empty-sub">后续可在这里保存：买点 / 卖点 / 止损止盈 / 仓位等</div>
+          <div class="empty-sub">后续可在这里保存：买点 / 卖点 / 止损止盈 / 仓位等，也可在“全部策略”中收藏。</div>
         </div>
       </div>
     </div>
+
+    <AllStrategyDialog
+      ref="allDialogRef"
+      v-model="allDialogVisible"
+      v-model:tab="allDialogTab"
+      :select-strategies="strategyStore.selectStrategies"
+      :trade-strategies="strategyStore.tradeStrategies"
+      :current-applied-select-id="currentAppliedSelectId"
+      :current-applied-trade-id="currentAppliedTradeId"
+      @toggle-favorite="onAllDialogToggleFavorite"
+      @toggle-apply="onAllDialogToggleApply"
+      @edit="onAllDialogEdit"
+      @remove="onAllDialogRemove"
+      @create="onAllDialogCreate"
+    />
 
     <!-- ✅ 保存策略弹窗 -->
     <SaveStrategyDialog
@@ -357,18 +411,74 @@
 
           <div class="panel">
             <div class="panel-head">
-              <div class="panel-title">
-                规则快照
-                <span class="panel-sub">先用 JSON 保存（后续可改为表单）</span>
+              <div class="panel-title">买卖条件</div>
+            </div>
+            <div class="trade-form-grid">
+              <div class="field">
+                <div class="field-label">买入条件</div>
+                <el-input
+                  v-model="editForm.snapshot.rules.buyCondition"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="例如：收盘价突破20日均线且成交量放大"
+                />
+              </div>
+              <div class="field">
+                <div class="field-label">卖出条件</div>
+                <el-input
+                  v-model="editForm.snapshot.rules.sellCondition"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="例如：跌破10日均线或动能转弱"
+                />
               </div>
             </div>
-            <div class="trade-editor">
-              <el-input
-                v-model="tradeSnapshotText"
-                type="textarea"
-                :rows="18"
-                placeholder='例如：{ "entry": "...", "exit": "...", "risk": { "stopLoss": -3, "takeProfit": 6 } }'
-              />
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">风险与仓位</div>
+            </div>
+            <div class="trade-risk-grid">
+              <div class="field">
+                <div class="field-label">止损(%)</div>
+                <el-input-number
+                  v-model="editForm.snapshot.rules.stopLossPct"
+                  :min="0"
+                  :max="100"
+                  :step="0.5"
+                  :precision="2"
+                  controls-position="right"
+                  style="width: 100%;"
+                  placeholder="例如 3"
+                />
+              </div>
+              <div class="field">
+                <div class="field-label">止盈(%)</div>
+                <el-input-number
+                  v-model="editForm.snapshot.rules.takeProfitPct"
+                  :min="0"
+                  :max="300"
+                  :step="0.5"
+                  :precision="2"
+                  controls-position="right"
+                  style="width: 100%;"
+                  placeholder="例如 8"
+                />
+              </div>
+              <div class="field">
+                <div class="field-label">仓位上限(%)</div>
+                <el-input-number
+                  v-model="editForm.snapshot.rules.maxPositionPct"
+                  :min="1"
+                  :max="100"
+                  :step="1"
+                  :precision="0"
+                  controls-position="right"
+                  style="width: 100%;"
+                  placeholder="例如 30"
+                />
+              </div>
             </div>
           </div>
         </template>
@@ -384,15 +494,19 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import SaveStrategyDialog from '@/components/SaveStrategyDialog.vue'
+import AllStrategyDialog from '@/components/strategy/AllStrategyDialog.vue'
 import MetricEditor from '@/components/strategy/MetricEditor.vue'
 import FilterEditor from '@/components/strategy/FilterEditor.vue'
 
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
+const router = useRouter()
 
 /** 指标定义 */
 const metricDefs = [
@@ -405,6 +519,31 @@ const metricDefs = [
   { key: 'spike5m', label: '异动', tip: '短线异动热度' }
 ]
 const metricLabel = (k) => metricDefs.find(x => x.key === k)?.label || k
+
+const emptyTradeRules = () => ({
+  buyCondition: '',
+  sellCondition: '',
+  stopLossPct: null,
+  takeProfitPct: null,
+  maxPositionPct: null
+})
+
+const toNullableNumber = (v) => {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const normalizeTradeRules = (snap) => {
+  const rules = snap?.rules || {}
+  return {
+    buyCondition: String(rules.buyCondition ?? rules.entry ?? '').trim(),
+    sellCondition: String(rules.sellCondition ?? rules.exit ?? '').trim(),
+    stopLossPct: toNullableNumber(rules.stopLossPct ?? rules?.risk?.stopLossPct ?? rules?.risk?.stopLoss),
+    takeProfitPct: toNullableNumber(rules.takeProfitPct ?? rules?.risk?.takeProfitPct ?? rules?.risk?.takeProfit),
+    maxPositionPct: toNullableNumber(rules.maxPositionPct ?? rules?.position?.maxPositionPct ?? rules?.position?.maxPct)
+  }
+}
 
 /** 当前应用 */
 const currentAppliedSelectId = computed({
@@ -427,13 +566,23 @@ const currentAppliedTradeName = computed(() => {
   return strategyStore.tradeStrategies.find(x => x.id === id)?.name || ''
 })
 
-const totalCount = (type) => (type === 'select'
-  ? (strategyStore.selectStrategies || []).length
-  : (strategyStore.tradeStrategies || []).length
+const selectMineStrategies = computed(() =>
+  (strategyStore.selectStrategies || [])
+    .filter(s => s.isFavorite || s.isCustom)
+    .slice()
+    .sort((a, b) => Number(!!b.isFavorite) - Number(!!a.isFavorite))
 )
-const enabledCount = (type) => (type === 'select'
-  ? (strategyStore.selectStrategies || []).filter(s => s.enabled).length
-  : (strategyStore.tradeStrategies || []).filter(s => s.enabled).length
+const tradeMineStrategies = computed(() =>
+  (strategyStore.tradeStrategies || [])
+    .filter(s => s.isFavorite || s.isCustom)
+    .slice()
+    .sort((a, b) => Number(!!b.isFavorite) - Number(!!a.isFavorite))
+)
+const selectFavoriteCount = computed(() =>
+  (strategyStore.selectStrategies || []).filter(s => !!s.isFavorite).length
+)
+const selectCustomCount = computed(() =>
+  (strategyStore.selectStrategies || []).filter(s => !!s.isCustom).length
 )
 
 /** home 快照（用于创建选股策略） */
@@ -446,7 +595,8 @@ const homeSnapshot = computed(() => homeFilter.toSnapshot?.() || {
 /** 快照不保存搜索 */
 const snapshotWithoutSearch = (snap) => {
   const base = snap || {}
-  const { searchQuery, ...rest } = base
+  const rest = { ...base }
+  delete rest.searchQuery
   return { ...rest, searchQuery: '' }
 }
 
@@ -468,13 +618,14 @@ const removeStrategySafe = async (type, s) => {
     if (type === 'trade' && currentAppliedTradeId.value === s.id) currentAppliedTradeId.value = null
 
     ElMessage.success('已删除')
-  } catch {}
+  } catch (err) {
+    void err
+  }
 }
 
 /** 应用策略 */
 const applyStrategy = (type, s) => {
   if (!s?.snapshot) return ElMessage.warning('该策略没有快照')
-  if (!s.enabled) return ElMessage.warning('该策略未启用')
 
   if (type === 'select') {
     const clean = snapshotWithoutSearch(s.snapshot)
@@ -487,21 +638,32 @@ const applyStrategy = (type, s) => {
 }
 
 /** 应用/取消 */
-const toggleApply = (type, s) => {
+const ensureHomePage = async () => {
+  if (router.currentRoute.value.path !== '/home') {
+    await router.push({ path: '/home' })
+  }
+}
+
+const toggleApply = async (type, s) => {
   if (!s) return
 
   if (type === 'select' && s.id === currentAppliedSelectId.value) {
     currentAppliedSelectId.value = null
     resetHomeSelectToDefault()
-    return ElMessage.success('已取消选股策略应用')
+    ElMessage.success('已取消选股策略应用')
+    await ensureHomePage()
+    return
   }
 
   if (type === 'trade' && s.id === currentAppliedTradeId.value) {
     currentAppliedTradeId.value = null
-    return ElMessage.success('已取消交易策略应用')
+    ElMessage.success('已取消交易策略应用')
+    await ensureHomePage()
+    return
   }
 
   applyStrategy(type, s)
+  await ensureHomePage()
 }
 
 const clearApplied = (type) => {
@@ -518,6 +680,8 @@ const clearApplied = (type) => {
 /** 保存策略 */
 const createVisible = ref(false)
 const createType = ref('select')
+const allDialogVisible = ref(false)
+const allDialogTab = ref('select')
 
 const openCreate = (type) => {
   createType.value = type
@@ -537,20 +701,81 @@ const submitCreate = ({ name, desc }) => {
       enabled: true,
       name,
       desc: desc || '保存了一组规则',
-      snapshot: { rules: {} }
+      snapshot: { rules: emptyTradeRules() },
+      isFavorite: false,
+      isCustom: true
     })
   }
   createVisible.value = false
   ElMessage.success('已保存到策略中心')
 }
 
+const toggleFavorite = (type, s) => {
+  if (!s) return
+  strategyStore.toggleFavorite(type, s.id)
+  ElMessage.success(s.isFavorite ? '已收藏' : '已取消收藏')
+}
+const onAllDialogToggleFavorite = ({ type, strategy }) => toggleFavorite(type, strategy)
+const onAllDialogToggleApply = ({ type, strategy }) => toggleApply(type, strategy)
+const onAllDialogEdit = ({ type, strategy }) => openEdit(type, strategy)
+const onAllDialogRemove = ({ type, strategy }) => removeStrategySafe(type, strategy)
+const onAllDialogCreate = ({ type, payload }) => {
+  if (type === 'select') {
+    strategyStore.addSelectStrategyFromSnapshot(payload)
+  } else {
+    strategyStore.addTradeStrategyFromSnapshot(payload)
+  }
+  ElMessage.success('已新建策略')
+}
+
+const allDialogRef = ref(null)
+const fixedPopperOptions = { strategy: 'fixed' }
+
+const flashCard = (el) => {
+  if (!el) return
+  el.classList.remove('focus-flash')
+  // force reflow for restart animation
+  void el.offsetWidth
+  el.classList.add('focus-flash')
+  window.setTimeout(() => el.classList.remove('focus-flash'), 1200)
+}
+
+const focusMineCard = (type, id) => {
+  const el = type === 'select' ? getSelEl(id) : getTrEl(id)
+  if (!el) return false
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  flashCard(el)
+  return true
+}
+
+const openAllAndFocus = async (type, id) => {
+  allDialogTab.value = type
+  allDialogVisible.value = true
+  await nextTick()
+  await new Promise(resolve => window.setTimeout(resolve, 80))
+  const ok = allDialogRef.value?.focusStrategyCard?.(type, id)
+  if (!ok) ElMessage.info('已打开全部策略，但暂未定位到对应卡片')
+}
+
+const jumpToApplied = async (type) => {
+  const id = type === 'select' ? currentAppliedSelectId.value : currentAppliedTradeId.value
+  if (!id) return
+
+  const list = type === 'select' ? strategyStore.selectStrategies : strategyStore.tradeStrategies
+  const strategy = list.find(s => s.id === id)
+  if (!strategy) return ElMessage.warning('当前应用策略不存在，可能已被删除')
+
+  const focused = focusMineCard(type, id)
+  if (focused) return
+
+  ElMessage.info('该策略未收藏，已为你打开“全部策略”定位')
+  await openAllAndFocus(type, id)
+}
+
 /** 编辑弹窗（保留） */
 const editVisible = ref(false)
 const editType = ref('select')
 const editForm = ref(null)
-
-const tradeSnapshotText = ref('')
-watch(editVisible, (v) => { if (!v) tradeSnapshotText.value = '' })
 
 const ensureFilterShape = (filters) => {
   const f = filters || {}
@@ -571,8 +796,7 @@ const openEdit = (type, s) => {
     clone.snapshot.searchQuery = ''
     clone.snapshot.filters = ensureFilterShape(clone.snapshot.filters || {})
   } else {
-    clone.snapshot = clone.snapshot || { rules: {} }
-    tradeSnapshotText.value = JSON.stringify(clone.snapshot?.rules || {}, null, 2)
+    clone.snapshot = { rules: normalizeTradeRules(clone.snapshot) }
   }
 
   editForm.value = clone
@@ -633,12 +857,7 @@ const submitEdit = () => {
       snapshot: cleanSnap
     })
   } else {
-    let rulesObj = {}
-    try {
-      rulesObj = tradeSnapshotText.value?.trim() ? JSON.parse(tradeSnapshotText.value) : {}
-    } catch (e) {
-      return ElMessage.error('交易策略规则 JSON 格式错误，请检查')
-    }
+    const rulesObj = normalizeTradeRules(s.snapshot)
     strategyStore.updateStrategy('trade', s.id, {
       name: s.name,
       desc: s.desc,
@@ -778,7 +997,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
   window.removeEventListener('scroll', onAnyScroll)
   if (io) {
-    try { io.disconnect() } catch {}
+    try { io.disconnect() } catch (err) { void err }
     io = null
   }
 })
@@ -797,7 +1016,6 @@ const activeApplyDisabled = computed(() => {
   const s = activeStrategy.value
   if (!s) return true
   if (isActiveApplied.value) return false // 允许取消
-  if (!s.enabled) return true
   if (!s.snapshot) return true
   return false
 })
@@ -827,10 +1045,19 @@ const detailFilterText = computed(() => {
 
 const detailTradeText = computed(() => {
   const s = activeStrategy.value
-  const rules = s?.snapshot?.rules || {}
-  const entries = Object.entries(rules).filter(([k]) => String(k).trim())
-  if (!entries.length) return '未配置'
-  return entries.map(([k, v]) => `${k}：${String(v)}`).join('，')
+  const rawRules = s?.snapshot?.rules || {}
+  const rules = normalizeTradeRules(s?.snapshot)
+  const parts = []
+  if (rules.buyCondition) parts.push(`买入：${rules.buyCondition}`)
+  if (rules.sellCondition) parts.push(`卖出：${rules.sellCondition}`)
+  if (rules.stopLossPct != null) parts.push(`止损：${rules.stopLossPct}%`)
+  if (rules.takeProfitPct != null) parts.push(`止盈：${rules.takeProfitPct}%`)
+  if (rules.maxPositionPct != null) parts.push(`仓位上限：${rules.maxPositionPct}%`)
+  if (!parts.length) {
+    const legacyEntries = Object.entries(rawRules).filter(([k, v]) => String(k).trim() && v != null && v !== '')
+    if (legacyEntries.length) return legacyEntries.map(([k, v]) => `${k}：${String(v)}`).join('，')
+  }
+  return parts.length ? parts.join('，') : '未配置'
 })
 
 /** ===== 文本展示（保留原逻辑） ===== */
@@ -886,9 +1113,20 @@ const buildFilterParts = (f) => {
 }
 
 const tradeRulesTextShort = (snap) => {
-  const rules = snap?.rules || {}
-  const keys = Object.keys(rules)
-  return keys.length ? `已配置 ${keys.length} 项` : '未配置'
+  const rawRules = snap?.rules || {}
+  const rules = normalizeTradeRules(snap)
+  const configured = [
+    !!rules.buyCondition,
+    !!rules.sellCondition,
+    rules.stopLossPct != null,
+    rules.takeProfitPct != null,
+    rules.maxPositionPct != null
+  ].filter(Boolean).length
+  if (!configured) {
+    const legacyCount = Object.values(rawRules).filter(v => v != null && v !== '').length
+    return legacyCount > 0 ? `已配置 ${legacyCount} 项` : '未配置'
+  }
+  return configured > 0 ? `已配置 ${configured}/5 项` : '未配置'
 }
 </script>
 
@@ -919,18 +1157,28 @@ const tradeRulesTextShort = (snap) => {
 
 .h-top{
   display:flex;
-  align-items:center;
-  justify-content: space-between;
+  align-items:flex-start;
+  justify-content: flex-start;
   gap: 8px;
 }
 .strategy-title{
-  font-weight: 800;
-  font-size: 13px;
+  flex: 0 0 18px;
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1;
   color:#111827;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 1px;
 }
 .h-top-actions{
+  flex: 1 1 auto;
+  min-width: 0;
   display:flex;
-  margin: -1.5px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
 }
 
 .h-current{
@@ -963,12 +1211,19 @@ const tradeRulesTextShort = (snap) => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.cur-name.clickable{
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
 
 .btn-mini{
-  padding: 0 8px !important;
+  padding: 0 10px !important;
   height: 26px !important;
-  border-radius: 10px !important;
+  border-radius: 14px !important;
   font-weight: 800;
+  margin: 0 !important;
 }
 .btn-clear{ padding: 0 6px !important; }
 
@@ -1024,8 +1279,14 @@ const tradeRulesTextShort = (snap) => {
   border-radius: 999px;
   background: rgba(64,158,255,.95);
 }
-
-.strategy-item.disabled{ opacity: .72; }
+.strategy-item.focus-flash{
+  animation: cardFlash 1.1s ease;
+}
+@keyframes cardFlash{
+  0% { box-shadow: 0 0 0 0 rgba(64,158,255,.55); }
+  35% { box-shadow: 0 0 0 4px rgba(64,158,255,.3); }
+  100% { box-shadow: 0 10px 18px rgba(0,0,0,.05); }
+}
 
 .s-main{ padding: 8px; cursor: pointer; }
 .s-line1{ display:flex; align-items:center; gap: 6px; min-width: 0; }
@@ -1039,6 +1300,43 @@ const tradeRulesTextShort = (snap) => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.star-btn{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+.star-icon{
+  font-size: 14px;
+  color:#cbd5e1;
+}
+.star-icon.on{
+  color:#f59e0b;
+}
+.tag{
+  display:inline-flex;
+  align-items:center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+.tag.fav{
+  color:#ca8a04;
+  background: rgba(250,204,21,.16);
+  border-color: rgba(250,204,21,.38);
+}
+.tag.custom{
+  color:#0f766e;
+  background: rgba(45,212,191,.12);
+  border-color: rgba(45,212,191,.34);
+}
+
 .badge{
   flex: 0 0 auto;
   font-size: 11px;
@@ -1227,10 +1525,19 @@ const tradeRulesTextShort = (snap) => {
   color:#9ca3af;
   font-size: 12px;
 }
-.trade-editor{
-  border: 1px solid rgba(0,0,0,.06);
-  background: rgba(0,0,0,.02);
-  border-radius: 12px;
-  padding: 10px;
+.field-label{
+  font-size: 12px;
+  font-weight: 800;
+  color:#6b7280;
+}
+.trade-form-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.trade-risk-grid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 </style>

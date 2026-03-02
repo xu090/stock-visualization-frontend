@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <!-- ✅ 给整体加一个锚点：用于新手教程聚焦“新闻条” -->
   <div class="newsbar" id="tour-news">
     <!-- 左：政策新闻 -->
@@ -188,6 +188,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { List } from '@element-plus/icons-vue'
 import { useNewsStore } from '@/stores/news'
 import { useConceptStore } from '@/stores/concept'
@@ -203,6 +204,7 @@ const emit = defineEmits(['apply-concept-filter', 'clear-concept-filter'])
 const newsStore = useNewsStore()
 const conceptStore = useConceptStore()
 const homeFilter = useHomeFilterStore()
+const router = useRouter()
 
 /** ✅ 统一从 store 读“新闻关联筛选” */
 const activeIds = computed(() => {
@@ -269,7 +271,7 @@ const detailConcepts = computed(() => {
   return ids.map(id => ({ id, name: conceptNameById(id) || String(id) }))
 })
 
-function applyRelatedConcepts() {
+async function applyRelatedConcepts() {
   const idsRaw = (current.value?.conceptIds || []).filter(Boolean)
   if (!idsRaw.length) return
 
@@ -288,6 +290,9 @@ function applyRelatedConcepts() {
   }
 
   dialogVisible.value = false
+  if (router.currentRoute.value.path !== '/home') {
+    await router.push({ path: '/home' })
+  }
 }
 
 function clearActiveFilter() {

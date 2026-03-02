@@ -1,18 +1,11 @@
-// src/stores/strategy.js
 import { defineStore } from 'pinia'
 
-/**
- * ✅ “概念层”策略（更贴近股民终端思路）
- * snapshot.filters 里的单位口径：
- * - minNetInflowY / minAmountY：亿元
- * - minChange：%
- * - maxDrawdown20d：%（负数，比如 -8）
- */
 const PRESET_SELECT_STRATEGIES = [
   {
     id: 1001,
     name: '强势主线',
-    desc: '涨跌、资金、活跃度综合筛选（Pareto排序）',
+    desc: '涨跌、资金、活跃度综合筛选（Pareto 排序）',
+    isFavorite: true,
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -31,6 +24,7 @@ const PRESET_SELECT_STRATEGIES = [
     id: 1002,
     name: '资金优先',
     desc: '以净流入为核心，兼顾成交额',
+    isFavorite: true,
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -58,7 +52,7 @@ const PRESET_SELECT_STRATEGIES = [
   {
     id: 1004,
     name: '广度确认',
-    desc: '上涨占比为主，验证板块扩散',
+    desc: '以上涨占比为主，验证板块扩散',
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -82,7 +76,7 @@ const PRESET_SELECT_STRATEGIES = [
   {
     id: 1006,
     name: '稳健回撤',
-    desc: '强度不弱 + 波动受控 + 回撤不深',
+    desc: '强度不弱 + 波动可控 + 回撤不过深',
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -90,39 +84,92 @@ const PRESET_SELECT_STRATEGIES = [
       selectedMetrics: ['strength', 'amount'],
       filters: { minStrength: 55, maxVolatility: 22, maxDrawdown20d: -8, minAmountY: 8 }
     }
+  },
+  {
+    id: 1007,
+    name: '自定义模板',
+    desc: '示例自定义策略，可在编辑中按需调整',
+    isCustom: true,
+    isFavorite: false,
+    enabled: true,
+    snapshot: {
+      scope: 'all',
+      searchQuery: '',
+      selectedMetrics: ['change', 'volRatio'],
+      filters: {
+        minChange: 1,
+        minVolRatio: 1.3,
+        minAmountY: 6
+      }
+    }
   }
 ]
 
+const normalizeStrategy = (item, { isCustom = false } = {}) => ({
+  ...item,
+  isFavorite: item?.isFavorite ?? isCustom,
+  isCustom: item?.isCustom ?? isCustom
+})
+
+const toNullableNumber = (v) => {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const normalizeTradeSnapshot = (snapshot) => {
+  const rules = snapshot?.rules || {}
+  return {
+    rules: {
+      buyCondition: String(rules.buyCondition ?? rules.entry ?? '').trim(),
+      sellCondition: String(rules.sellCondition ?? rules.exit ?? '').trim(),
+      stopLossPct: toNullableNumber(rules.stopLossPct ?? rules?.risk?.stopLossPct ?? rules?.risk?.stopLoss),
+      takeProfitPct: toNullableNumber(rules.takeProfitPct ?? rules?.risk?.takeProfitPct ?? rules?.risk?.takeProfit),
+      maxPositionPct: toNullableNumber(rules.maxPositionPct ?? rules?.position?.maxPositionPct ?? rules?.position?.maxPct)
+    }
+  }
+}
+
 export const useStrategyStore = defineStore('strategy', {
   state: () => ({
-    /** ✅ 选概念/关注策略（=老师说的选股策略，先停留在概念层） */
-    selectStrategies: PRESET_SELECT_STRATEGIES,
-
-    /** 交易策略（老师说先不用做） */
+    selectStrategies: PRESET_SELECT_STRATEGIES.map(item => normalizeStrategy(item, { isCustom: false })),
     tradeStrategies: []
   }),
 
-  getters: {
-    enabledSelectStrategies: (state) => state.selectStrategies.filter(s => s.enabled),
-    enabledTradeStrategies: (state) => state.tradeStrategies.filter(s => s.enabled)
-  },
-
   actions: {
-    /** ✅ 从当前筛选快照创建策略（核心：导出筛选条件） */
-    addSelectStrategyFromSnapshot({ name, desc, snapshot }) {
+    addSelectStrategyFromSnapshot({ name, desc, snapshot, isFavorite = false, isCustom = true } = {}) {
       this.selectStrategies.unshift({
         id: Date.now(),
         enabled: true,
         name: name?.trim() || '未命名策略',
-        desc: desc?.trim() || '保存了一组筛选/排序条件',
-        snapshot: snapshot || null
+        desc: desc?.trim() || '保存了一组筛选与排序条件',
+        snapshot: snapshot || null,
+        isFavorite: !!isFavorite,
+        isCustom: !!isCustom
+      })
+    },
+
+    addTradeStrategyFromSnapshot({ name, desc, snapshot, isFavorite = false, isCustom = true } = {}) {
+      this.tradeStrategies.unshift({
+        id: Date.now(),
+        enabled: true,
+        name: name?.trim() || '未命名策略',
+        desc: desc?.trim() || '保存了一组交易规则',
+        snapshot: normalizeTradeSnapshot(snapshot),
+        isFavorite: !!isFavorite,
+        isCustom: !!isCustom
       })
     },
 
     updateStrategy(type, id, patch) {
       const list = type === 'select' ? this.selectStrategies : this.tradeStrategies
       const target = list.find(s => s.id === id)
-      if (target) Object.assign(target, patch)
+      if (!target) return
+      if (type === 'trade' && patch?.snapshot) {
+        Object.assign(target, { ...patch, snapshot: normalizeTradeSnapshot(patch.snapshot) })
+        return
+      }
+      Object.assign(target, patch)
     },
 
     removeStrategy(type, id) {
@@ -133,10 +180,10 @@ export const useStrategyStore = defineStore('strategy', {
       }
     },
 
-    toggleStrategy(type, id) {
+    toggleFavorite(type, id) {
       const list = type === 'select' ? this.selectStrategies : this.tradeStrategies
       const target = list.find(s => s.id === id)
-      if (target) target.enabled = !target.enabled
+      if (target) target.isFavorite = !target.isFavorite
     }
   }
 })
