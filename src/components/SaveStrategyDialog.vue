@@ -92,13 +92,29 @@
         <div class="snap-card">
           <div class="snap-head">
             <span class="snap-title">快照摘要</span>
-            <span class="snap-sub">（后续可扩展买卖条件/仓位/风控）</span>
+            <span class="snap-sub">（结构化信息展示，非JSON）</span>
           </div>
           <div class="snap-row">
-            <div class="snap-k">说明</div>
+            <div class="snap-k">元信息</div>
             <div class="snap-v">
               <div class="snap-pill">
-                交易策略快照结构可后续扩展（买卖条件/仓位/风控等）
+                策略类型 / 适用市场 / 标的类型 / 时间周期
+              </div>
+            </div>
+          </div>
+          <div class="snap-row">
+            <div class="snap-k">入场/出场</div>
+            <div class="snap-v">
+              <div class="snap-pill">
+                买入条件、触发方式、止盈止损、退出信号
+              </div>
+            </div>
+          </div>
+          <div class="snap-row">
+            <div class="snap-k">仓位/风控</div>
+            <div class="snap-v">
+              <div class="snap-pill">
+                初始仓位、加减仓规则、回撤约束、黑名单、参数区
               </div>
             </div>
           </div>
@@ -116,7 +132,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, watch } from 'vue'
+import { computed, defineEmits, defineProps, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps({

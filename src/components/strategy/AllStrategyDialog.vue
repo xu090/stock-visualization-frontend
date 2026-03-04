@@ -98,9 +98,13 @@
                 <div class="k">描述</div>
                 <div class="v">{{ s.desc || '无描述' }}</div>
               </div>
-              <div class="all-info-row">
-                <div class="k">规则</div>
-                <div class="v">{{ tradeRulesTextFull(s.snapshot) }}</div>
+              <div
+                v-for="(row, idx) in tradeDisplayEntries(s.snapshot)"
+                :key="`all-tr-row-${s.id}-${idx}`"
+                class="all-info-row"
+              >
+                <div class="k">{{ row.key }}</div>
+                <div class="v">{{ row.value }}</div>
               </div>
             </div>
             <div class="all-actions">
@@ -204,24 +208,23 @@
           <div class="panel-head">
             <div class="panel-title">买卖条件</div>
           </div>
+          <div class="trade-trigger-row">
+            <div class="field">
+              <div class="field-label">触发方式</div>
+              <el-radio-group v-model="createForm.snapshot.entry.triggerMode">
+                <el-radio-button label="close">收盘触发</el-radio-button>
+                <el-radio-button label="intraday">盘中触发</el-radio-button>
+              </el-radio-group>
+            </div>
+          </div>
           <div class="trade-form-grid">
             <div class="field">
               <div class="field-label">买入条件</div>
-              <el-input
-                v-model="createForm.snapshot.rules.buyCondition"
-                type="textarea"
-                :rows="3"
-                placeholder="例如：收盘价突破20日均线且成交量放大"
-              />
+              <TradeConditionEditor v-model="createForm.snapshot.entry.conditions" />
             </div>
             <div class="field">
               <div class="field-label">卖出条件</div>
-              <el-input
-                v-model="createForm.snapshot.rules.sellCondition"
-                type="textarea"
-                :rows="3"
-                placeholder="例如：跌破10日均线或动能转弱"
-              />
+              <TradeConditionEditor v-model="createForm.snapshot.exit.conditions" />
             </div>
           </div>
         </div>
@@ -288,6 +291,13 @@ import { ElMessage } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import MetricEditor from '@/components/strategy/MetricEditor.vue'
 import FilterEditor from '@/components/strategy/FilterEditor.vue'
+import TradeConditionEditor from '@/components/strategy/TradeConditionEditor.vue'
+import {
+  createDefaultTradeSnapshot,
+  getTradeDisplayEntries,
+  normalizeTradeSnapshot,
+  tradeSnapshotToLegacyRules
+} from '@/utils/tradeStrategy'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -374,20 +384,8 @@ const buildFilterParts = (f) => {
   return parts
 }
 
-const tradeRulesTextFull = (snap) => {
-  const rawRules = snap?.rules || {}
-  const rules = normalizeTradeRules(snap)
-  const parts = []
-  if (rules.buyCondition) parts.push(`买入：${rules.buyCondition}`)
-  if (rules.sellCondition) parts.push(`卖出：${rules.sellCondition}`)
-  if (rules.stopLossPct != null) parts.push(`止损：${rules.stopLossPct}%`)
-  if (rules.takeProfitPct != null) parts.push(`止盈：${rules.takeProfitPct}%`)
-  if (rules.maxPositionPct != null) parts.push(`仓位上限：${rules.maxPositionPct}%`)
-  if (!parts.length) {
-    const legacyEntries = Object.entries(rawRules).filter(([k, v]) => String(k).trim() && v != null && v !== '')
-    if (legacyEntries.length) return legacyEntries.map(([k, v]) => `${k}：${String(v)}`).join('，')
-  }
-  return parts.length ? parts.join('，') : '未配置'
+const tradeDisplayEntries = (snap) => {
+  return getTradeDisplayEntries(snap)
 }
 
 const emptySelectFilters = () => ({
@@ -412,30 +410,7 @@ const createType = ref('select')
 const createForm = ref(null)
 const itemRefs = ref(new Map())
 
-const emptyTradeRules = () => ({
-  buyCondition: '',
-  sellCondition: '',
-  stopLossPct: null,
-  takeProfitPct: null,
-  maxPositionPct: null
-})
-
-const toNullableNumber = (v) => {
-  if (v == null || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-const normalizeTradeRules = (snap) => {
-  const rules = snap?.rules || {}
-  return {
-    buyCondition: String(rules.buyCondition ?? rules.entry ?? '').trim(),
-    sellCondition: String(rules.sellCondition ?? rules.exit ?? '').trim(),
-    stopLossPct: toNullableNumber(rules.stopLossPct ?? rules?.risk?.stopLossPct ?? rules?.risk?.stopLoss),
-    takeProfitPct: toNullableNumber(rules.takeProfitPct ?? rules?.risk?.takeProfitPct ?? rules?.risk?.takeProfit),
-    maxPositionPct: toNullableNumber(rules.maxPositionPct ?? rules?.position?.maxPositionPct ?? rules?.position?.maxPct)
-  }
-}
+const normalizeTradeRules = (snap) => tradeSnapshotToLegacyRules(snap)
 
 const setItemRef = (type, id, el) => {
   const key = `${type}-${String(id)}`
@@ -479,7 +454,7 @@ const openCreate = (type) => {
     createForm.value = {
       name: '',
       desc: '',
-      snapshot: { rules: emptyTradeRules() }
+      snapshot: createDefaultTradeSnapshot()
     }
   }
   createVisible.value = true
@@ -518,7 +493,6 @@ const submitCreate = () => {
       }
     })
   } else {
-    const rulesObj = normalizeTradeRules(form.snapshot)
     emit('create', {
       type: 'trade',
       payload: {
@@ -526,7 +500,10 @@ const submitCreate = () => {
         desc: form.desc,
         isFavorite: false,
         isCustom: true,
-        snapshot: { rules: rulesObj }
+        snapshot: normalizeTradeSnapshot({
+          ...(form.snapshot || {}),
+          rules: normalizeTradeRules(form.snapshot)
+        })
       }
     })
   }
@@ -730,6 +707,9 @@ const submitCreate = () => {
   display:grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.trade-trigger-row{
+  margin-bottom: 12px;
 }
 .trade-risk-grid{
   display:grid;

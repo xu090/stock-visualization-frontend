@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="strategy-dock" id="tour-strategy">
     <!-- 顶部：标题 + 保存入口 -->
     <div class="strategy-header">
@@ -70,7 +70,7 @@
       <div class="section">
         <div class="section-head">
           <span class="section-title">选股策略</span>
-          <span class="section-sub">收藏 {{ selectFavoriteCount }} / 自定义 {{ selectCustomCount }}</span>
+          <span class="section-sub">收藏 {{ selectFavoriteCount }} / 自定义{{ selectCustomCount }}</span>
         </div>
 
         <div class="strategy-list" v-if="selectMineStrategies.length">
@@ -127,7 +127,7 @@
                   </div>
                 </div>
 
-                <!-- 卡片按钮区：保持原功能 -->
+                <!-- 卡片按钮区：保留原有功能 -->
                 <div class="s-actions" @click.stop>
                   <el-button
                     class="btn-act"
@@ -150,7 +150,7 @@
               </div>
             </template>
 
-            <!-- Popover 内容：只留“关闭/应用”，条件正常一段话展示 -->
+            <!-- Popover 内容：仅保留“关闭 / 应用”，条件按正常文本展示 -->
             <div class="pop-body" v-if="activeStrategy">
               <div class="pop-title">选股策略：{{ activeStrategy.name }}</div>
 
@@ -188,7 +188,7 @@
 
         <div v-else class="empty-trade">
           <div class="empty-title">暂无选股策略</div>
-          <div class="empty-sub">当前只展示“收藏”或“自建”策略，可在“全部策略”中收藏。</div>
+          <div class="empty-sub">当前仅展示“收藏”或“自定义”策略，可在“全部策略”中收藏。</div>
         </div>
       </div>
 
@@ -239,7 +239,7 @@
                   </div>
 
                   <div class="s-line2" v-if="s.snapshot">
-                    <span class="mini">规则</span>
+                    <span class="mini">买卖</span>
                     <span class="val">{{ tradeRulesTextShort(s.snapshot) }}</span>
                   </div>
                   <div class="s-line2" v-if="!s.snapshot">
@@ -278,9 +278,13 @@
                   <div class="v">{{ activeStrategy.desc }}</div>
                 </div>
 
-                <div class="pop-row">
-                  <div class="k">规则</div>
-                  <div class="v">{{ detailTradeText }}</div>
+                <div
+                  v-for="(row, idx) in detailTradeEntries"
+                  :key="`detail-tr-${idx}`"
+                  class="pop-row"
+                >
+                  <div class="k">{{ row.key }}</div>
+                  <div class="v">{{ row.value }}</div>
                 </div>
               </div>
 
@@ -321,7 +325,7 @@
       @create="onAllDialogCreate"
     />
 
-    <!-- ✅ 保存策略弹窗 -->
+    <!-- 保存策略弹窗 -->
     <SaveStrategyDialog
       v-model="createVisible"
       :type="createType"
@@ -342,7 +346,7 @@
       destroy-on-close
     >
       <div class="edit-shell" v-if="editForm">
-        <!-- ✅ 选股：左列=基础信息+排序；右列=筛选 -->
+        <!-- 选股：左列基础信息+排序，右列筛选 -->
         <template v-if="editType === 'select'">
           <div class="edit-two-col">
             <!-- 左列 -->
@@ -364,7 +368,7 @@
                 <div class="panel-head">
                   <div class="panel-title">
                     排序指标
-                    <span class="panel-sub">已选 {{ (editForm.snapshot?.selectedMetrics || []).length }}/3</span>
+                    <span class="panel-sub">已选{{ (editForm.snapshot?.selectedMetrics || []).length }}/3</span>
                   </div>
                   <el-button
                     size="small"
@@ -394,7 +398,7 @@
           </div>
         </template>
 
-        <!-- ✅ 交易：保持原来结构 -->
+        <!-- 交易 -->
         <template v-else>
           <div class="edit-top-card">
             <div class="edit-top-grid">
@@ -413,24 +417,23 @@
             <div class="panel-head">
               <div class="panel-title">买卖条件</div>
             </div>
+            <div class="trade-trigger-row">
+              <div class="field">
+                <div class="field-label">触发方式</div>
+                <el-radio-group v-model="editForm.snapshot.entry.triggerMode">
+                  <el-radio-button label="close">收盘触发</el-radio-button>
+                  <el-radio-button label="intraday">盘中触发</el-radio-button>
+                </el-radio-group>
+              </div>
+            </div>
             <div class="trade-form-grid">
               <div class="field">
                 <div class="field-label">买入条件</div>
-                <el-input
-                  v-model="editForm.snapshot.rules.buyCondition"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="例如：收盘价突破20日均线且成交量放大"
-                />
+                <TradeConditionEditor v-model="editForm.snapshot.entry.conditions" />
               </div>
               <div class="field">
                 <div class="field-label">卖出条件</div>
-                <el-input
-                  v-model="editForm.snapshot.rules.sellCondition"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="例如：跌破10日均线或动能转弱"
-                />
+                <TradeConditionEditor v-model="editForm.snapshot.exit.conditions" />
               </div>
             </div>
           </div>
@@ -499,10 +502,16 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
+import {
+  createDefaultTradeSnapshot,
+  getTradeDisplayEntries,
+  normalizeTradeSnapshot
+} from '@/utils/tradeStrategy'
 import SaveStrategyDialog from '@/components/SaveStrategyDialog.vue'
 import AllStrategyDialog from '@/components/strategy/AllStrategyDialog.vue'
 import MetricEditor from '@/components/strategy/MetricEditor.vue'
 import FilterEditor from '@/components/strategy/FilterEditor.vue'
+import TradeConditionEditor from '@/components/strategy/TradeConditionEditor.vue'
 
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
@@ -519,31 +528,6 @@ const metricDefs = [
   { key: 'spike5m', label: '异动', tip: '短线异动热度' }
 ]
 const metricLabel = (k) => metricDefs.find(x => x.key === k)?.label || k
-
-const emptyTradeRules = () => ({
-  buyCondition: '',
-  sellCondition: '',
-  stopLossPct: null,
-  takeProfitPct: null,
-  maxPositionPct: null
-})
-
-const toNullableNumber = (v) => {
-  if (v == null || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-const normalizeTradeRules = (snap) => {
-  const rules = snap?.rules || {}
-  return {
-    buyCondition: String(rules.buyCondition ?? rules.entry ?? '').trim(),
-    sellCondition: String(rules.sellCondition ?? rules.exit ?? '').trim(),
-    stopLossPct: toNullableNumber(rules.stopLossPct ?? rules?.risk?.stopLossPct ?? rules?.risk?.stopLoss),
-    takeProfitPct: toNullableNumber(rules.takeProfitPct ?? rules?.risk?.takeProfitPct ?? rules?.risk?.takeProfit),
-    maxPositionPct: toNullableNumber(rules.maxPositionPct ?? rules?.position?.maxPositionPct ?? rules?.position?.maxPct)
-  }
-}
 
 /** 当前应用 */
 const currentAppliedSelectId = computed({
@@ -585,14 +569,14 @@ const selectCustomCount = computed(() =>
   (strategyStore.selectStrategies || []).filter(s => !!s.isCustom).length
 )
 
-/** home 快照（用于创建选股策略） */
+/** Home 快照（用于创建选股策略） */
 const homeSnapshot = computed(() => homeFilter.toSnapshot?.() || {
   selectedMetrics: homeFilter.selectedMetrics || [],
   filters: homeFilter.filters || {},
   searchQuery: homeFilter.searchQuery || ''
 })
 
-/** 快照不保存搜索 */
+/** 快照不保存搜索词 */
 const snapshotWithoutSearch = (snap) => {
   const base = snap || {}
   const rest = { ...base }
@@ -603,7 +587,7 @@ const snapshotWithoutSearch = (snap) => {
 /** 删除策略 */
 const removeStrategySafe = async (type, s) => {
   try {
-    await ElMessageBox.confirm(`确定删除「${s.name}」？`, '删除策略', {
+    await ElMessageBox.confirm(`确定删除「${s.name}」吗？`, '删除策略', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning'
@@ -696,12 +680,10 @@ const submitCreate = ({ name, desc }) => {
       snapshot: snapshotWithoutSearch(homeSnapshot.value)
     })
   } else {
-    strategyStore.tradeStrategies.unshift({
-      id: Date.now(),
-      enabled: true,
+    strategyStore.addTradeStrategyFromSnapshot({
       name,
-      desc: desc || '保存了一组规则',
-      snapshot: { rules: emptyTradeRules() },
+      desc: desc || '保存了一组交易条件',
+      snapshot: createDefaultTradeSnapshot(),
       isFavorite: false,
       isCustom: true
     })
@@ -796,14 +778,14 @@ const openEdit = (type, s) => {
     clone.snapshot.searchQuery = ''
     clone.snapshot.filters = ensureFilterShape(clone.snapshot.filters || {})
   } else {
-    clone.snapshot = { rules: normalizeTradeRules(clone.snapshot) }
+    clone.snapshot = normalizeTradeSnapshot(clone.snapshot)
   }
 
   editForm.value = clone
   editVisible.value = true
 }
 
-/** ✅ 全字段清空 filters */
+/** 全字段清空 filters */
 const emptySelectFilters = () => ({
   minChange: null,
   maxChange: null,
@@ -821,7 +803,7 @@ const emptySelectFilters = () => ({
   maxDrawdown20d: null
 })
 
-/** ✅ 默认选股条件 */
+/** 默认选股条件 */
 const defaultSelectSnapshot = () => ({
   scope: 'all',
   selectedMetrics: [],
@@ -829,7 +811,7 @@ const defaultSelectSnapshot = () => ({
   searchQuery: ''
 })
 
-/** ✅ 取消/清空选股策略时：强制重置主界面排序+筛选 */
+/** 取消/清空选股策略时：强制重置主界面排序和筛选 */
 const resetHomeSelectToDefault = () => {
   const snap = snapshotWithoutSearch(defaultSelectSnapshot())
   homeFilter.applySnapshot?.(snap)
@@ -857,11 +839,10 @@ const submitEdit = () => {
       snapshot: cleanSnap
     })
   } else {
-    const rulesObj = normalizeTradeRules(s.snapshot)
     strategyStore.updateStrategy('trade', s.id, {
       name: s.name,
       desc: s.desc,
-      snapshot: { rules: rulesObj }
+      snapshot: normalizeTradeSnapshot(s.snapshot)
     })
   }
 
@@ -883,7 +864,7 @@ const resetEditFilters = () => {
 /** ===== Popover 详情（核心：自动关闭） ===== */
 const bodyRef = ref(null)
 
-/** 存储每个卡片 DOM（选股/交易分开，避免 id 撞） */
+/** 存储每个卡片 DOM（选股/交易分开，避免 id 冲突） */
 const selRefs = ref(new Map()) // id -> el
 const trRefs = ref(new Map()) // id -> el
 
@@ -910,7 +891,7 @@ const setActivePopover = async (type, s, anchorEl) => {
   activeStrategy.value = s || null
   activeAnchorEl.value = anchorEl || null
   await nextTick()
-  // 立即检查一次（防止打开瞬间其实已经不可见）
+  // 立即检查一次（防止打开瞬间已经不可见）
   ensureAnchorVisibleOrClose()
 }
 const clearActivePopover = () => {
@@ -923,7 +904,7 @@ const closeActivePopover = () => {
   document.body.click()
 }
 
-/** 判断 anchor 是否“在可视区域内” */
+/** 判断 anchor 是否在可视区域内 */
 const isElVisibleInViewport = (el) => {
   if (!el) return false
   const rect = el.getBoundingClientRect()
@@ -936,7 +917,7 @@ const isElVisibleInViewport = (el) => {
     rect.right <= 0 ||
     rect.left >= vw
   if (out) return false
-  // 有交集就算可见（不要求面积）
+  // 只要有交集就算可见（不要求面积）
   return true
 }
 
@@ -948,7 +929,7 @@ const ensureAnchorVisibleOrClose = () => {
   }
 }
 
-/** IntersectionObserver：更精确（滚出可见区域就关） */
+/** IntersectionObserver：更精确（滚出可见区域就关闭） */
 let io = null
 const setupIO = () => {
   if (typeof IntersectionObserver === 'undefined') return
@@ -977,7 +958,7 @@ watch(activeAnchorEl, (el, prev) => {
   if (io && el) io.observe(el)
 })
 
-/** 监听滚动/resize：兜底（IO 没有或一些复杂布局） */
+/** 监听滚动/resize：兜底（IO 不可用或复杂布局） */
 const onAnyScroll = () => ensureAnchorVisibleOrClose()
 const onResize = () => ensureAnchorVisibleOrClose()
 
@@ -1027,7 +1008,7 @@ const applyFromPopoverAndClose = () => {
   closeActivePopover()
 }
 
-/** ===== Popover 内容文本（正常一段话，不拆 tag） ===== */
+/** ===== Popover 内容文本（正常段落，不拼 tag） ===== */
 const detailSortText = computed(() => {
   const s = activeStrategy.value
   const keys = (s?.snapshot?.selectedMetrics || []).filter(Boolean).slice(0, 3)
@@ -1043,21 +1024,9 @@ const detailFilterText = computed(() => {
   return parts.length ? parts.join('，') : '无筛选条件'
 })
 
-const detailTradeText = computed(() => {
+const detailTradeEntries = computed(() => {
   const s = activeStrategy.value
-  const rawRules = s?.snapshot?.rules || {}
-  const rules = normalizeTradeRules(s?.snapshot)
-  const parts = []
-  if (rules.buyCondition) parts.push(`买入：${rules.buyCondition}`)
-  if (rules.sellCondition) parts.push(`卖出：${rules.sellCondition}`)
-  if (rules.stopLossPct != null) parts.push(`止损：${rules.stopLossPct}%`)
-  if (rules.takeProfitPct != null) parts.push(`止盈：${rules.takeProfitPct}%`)
-  if (rules.maxPositionPct != null) parts.push(`仓位上限：${rules.maxPositionPct}%`)
-  if (!parts.length) {
-    const legacyEntries = Object.entries(rawRules).filter(([k, v]) => String(k).trim() && v != null && v !== '')
-    if (legacyEntries.length) return legacyEntries.map(([k, v]) => `${k}：${String(v)}`).join('，')
-  }
-  return parts.length ? parts.join('，') : '未配置'
+  return getTradeDisplayEntries(s?.snapshot)
 })
 
 /** ===== 文本展示（保留原逻辑） ===== */
@@ -1092,8 +1061,8 @@ const buildFilterParts = (f) => {
     const hasMax = max != null
     if (!hasMin && !hasMax) return ''
     if (hasMin && hasMax) return `${min}${unit}~${max}${unit}`
-    if (hasMin) return `≥${min}${unit}`
-    return `≤${max}${unit}`
+    if (hasMin) return `>=${min}${unit}`
+    return `<=${max}${unit}`
   }
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
   const b = range(f.minNetInflowY, f.maxNetInflowY, '亿'); if (b) parts.push(`净流入${b}`)
@@ -1105,28 +1074,16 @@ const buildFilterParts = (f) => {
     '%'
   )
   if (e) parts.push(`上涨占比${e}`)
-  if (f.minStrength != null) parts.push(`强度≥${f.minStrength}`)
-  if (f.minSpike5m != null) parts.push(`异动≥${f.minSpike5m}`)
-  if (f.maxVolatility != null) parts.push(`波动≤${f.maxVolatility}`)
-  if (f.maxDrawdown20d != null) parts.push(`回撤≥${f.maxDrawdown20d}%`)
+  if (f.minStrength != null) parts.push(`强度>=${f.minStrength}`)
+  if (f.minSpike5m != null) parts.push(`异动>=${f.minSpike5m}`)
+  if (f.maxVolatility != null) parts.push(`波动<=${f.maxVolatility}`)
+  if (f.maxDrawdown20d != null) parts.push(`回撤>=${f.maxDrawdown20d}%`)
   return parts
 }
 
 const tradeRulesTextShort = (snap) => {
-  const rawRules = snap?.rules || {}
-  const rules = normalizeTradeRules(snap)
-  const configured = [
-    !!rules.buyCondition,
-    !!rules.sellCondition,
-    rules.stopLossPct != null,
-    rules.takeProfitPct != null,
-    rules.maxPositionPct != null
-  ].filter(Boolean).length
-  if (!configured) {
-    const legacyCount = Object.values(rawRules).filter(v => v != null && v !== '').length
-    return legacyCount > 0 ? `已配置 ${legacyCount} 项` : '未配置'
-  }
-  return configured > 0 ? `已配置 ${configured}/5 项` : '未配置'
+  const entries = getTradeDisplayEntries(snap)
+  return entries.length ? '买卖条件 + 风险仓位' : '未配置'
 }
 </script>
 
@@ -1455,7 +1412,7 @@ const tradeRulesTextShort = (snap) => {
   gap: 14px;
 }
 
-/* ✅ 新增：选股编辑两列布局（左：基础+排序 / 右：筛选） */
+/* 新增：选股编辑两列布局（左：基础+排序 / 右：筛选） */
 .edit-two-col{
   display:grid;
   grid-template-columns: 1fr 1.08fr;
@@ -1469,7 +1426,7 @@ const tradeRulesTextShort = (snap) => {
   gap: 14px;
 }
 
-/* ✅ 可选：在两列模式下，基础信息改为单列更舒服；不想要可删除这段 */
+/* 可选：两列模式下，基础信息改为单列更舒适；不需要可删除本段 */
 .edit-two-col .edit-top-grid{
   grid-template-columns: 1fr;
 }
@@ -1490,7 +1447,7 @@ const tradeRulesTextShort = (snap) => {
 .field{ display:flex; flex-direction: column; gap: 8px; }
 
 
-/* 你原来的 edit-grid 还留着也不影响（选股不再用到） */
+/* 你原来的 edit-grid 保留也不影响（选股不再使用） */
 .edit-grid{
   display:grid;
   grid-template-columns: 1fr 1.08fr;
@@ -1535,9 +1492,17 @@ const tradeRulesTextShort = (snap) => {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.trade-trigger-row{
+  margin-bottom: 12px;
+}
 .trade-risk-grid{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 </style>
+
+
+
+
+
