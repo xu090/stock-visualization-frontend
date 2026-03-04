@@ -199,108 +199,63 @@
         </div>
 
         <div class="strategy-list" v-if="tradeMineStrategies.length">
-          <el-popover
+          <div
             v-for="s in tradeMineStrategies"
             :key="`tr-${s.id}`"
-            placement="right-start"
-            :width="360"
-            trigger="click"
-            :show-arrow="true"
-            :popper-options="fixedPopperOptions"
-            :popper-class="'strategy-popover'"
-            @show="setActivePopover('trade', s, getTrEl(s.id))"
-            @hide="clearActivePopover"
+            class="strategy-item"
+            :ref="(el) => setTrRef(s.id, el)"
+            :class="{
+              applied: s.id === currentAppliedTradeId
+            }"
+            @click="openTradeDetail(s)"
           >
-            <template #reference>
-              <div
-                class="strategy-item"
-                :ref="(el) => setTrRef(s.id, el)"
-                :class="{
-                  applied: s.id === currentAppliedTradeId
-                }"
-              >
-                <div class="s-main">
-                  <div class="s-line1">
-                    <span class="s-name" :title="s.name">{{ s.name }}</span>
-                    <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
-                    <span v-if="s.id === currentAppliedTradeId" class="badge">应用</span>
-                    <button
-                      class="star-btn"
-                      type="button"
-                      :title="s.isFavorite ? '取消收藏' : '收藏'"
-                      @click.stop="toggleFavorite('trade', s)"
-                    >
-                      <el-icon class="star-icon" :class="{ on: s.isFavorite }">
-                        <StarFilled v-if="s.isFavorite" />
-                        <Star v-else />
-                      </el-icon>
-                    </button>
-                    
-                  </div>
-
-                  <div class="s-line2" v-if="s.snapshot">
-                    <span class="mini">买卖</span>
-                    <span class="val">{{ tradeRulesTextShort(s.snapshot) }}</span>
-                  </div>
-                  <div class="s-line2" v-if="!s.snapshot">
-                    <span class="val">无快照</span>
-                  </div>
-                </div>
-
-                <div class="s-actions" @click.stop>
-                  <el-button
-                    class="btn-act"
-                    size="small"
-                    type="primary"
-                    :plain="s.id !== currentAppliedTradeId"
-                    @click="toggleApply('trade', s)"
-                  >
-                    {{ s.id === currentAppliedTradeId ? '取消' : '应用' }}
-                  </el-button>
-
-                  <el-button class="btn-act" size="small" plain @click="openEdit('trade', s)">
-                    编辑
-                  </el-button>
-
-                  <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe('trade', s)">
-                    删除
-                  </el-button>
-                </div>
-              </div>
-            </template>
-
-            <div class="pop-body" v-if="activeStrategy">
-              <div class="pop-title">交易策略：{{ activeStrategy.name }}</div>
-
-              <div class="pop-grid">
-                <div class="pop-row" v-if="activeStrategy.desc">
-                  <div class="k">描述</div>
-                  <div class="v">{{ activeStrategy.desc }}</div>
-                </div>
-
-                <div
-                  v-for="(row, idx) in detailTradeEntries"
-                  :key="`detail-tr-${idx}`"
-                  class="pop-row"
+            <div class="s-main">
+              <div class="s-line1">
+                <span class="s-name" :title="s.name">{{ s.name }}</span>
+                <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
+                <span v-if="s.id === currentAppliedTradeId" class="badge">应用</span>
+                <button
+                  class="star-btn"
+                  type="button"
+                  :title="s.isFavorite ? '取消收藏' : '收藏'"
+                  @click.stop="toggleFavorite('trade', s)"
                 >
-                  <div class="k">{{ row.key }}</div>
-                  <div class="v">{{ row.value }}</div>
-                </div>
+                  <el-icon class="star-icon" :class="{ on: s.isFavorite }">
+                    <StarFilled v-if="s.isFavorite" />
+                    <Star v-else />
+                  </el-icon>
+                </button>
               </div>
 
-              <div class="pop-actions">
-                <el-button size="small" @click="closeActivePopover()">关闭</el-button>
-                <el-button
-                  size="small"
-                  type="primary"
-                  :disabled="activeApplyDisabled"
-                  @click="applyFromPopoverAndClose()"
-                >
-                  {{ activeApplyText }}
-                </el-button>
+              <div class="s-line2 s-desc" v-if="s.desc">
+                <span class="mini">描述</span>
+                <span class="val" :title="s.desc">{{ s.desc }}</span>
+              </div>
+              <div class="s-line2" v-if="!s.snapshot">
+                <span class="val">无快照</span>
               </div>
             </div>
-          </el-popover>
+
+            <div class="s-actions" @click.stop>
+              <el-button
+                class="btn-act"
+                size="small"
+                type="primary"
+                :plain="s.id !== currentAppliedTradeId"
+                @click="toggleApply('trade', s)"
+              >
+                {{ s.id === currentAppliedTradeId ? '取消' : '应用' }}
+              </el-button>
+
+              <el-button class="btn-act" size="small" plain @click="openEdit('trade', s)">
+                编辑
+              </el-button>
+
+              <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe('trade', s)">
+                删除
+              </el-button>
+            </div>
+          </div>
         </div>
 
         <div v-else class="empty-trade">
@@ -340,12 +295,13 @@
     <el-dialog
       v-model="editVisible"
       :title="editType === 'select' ? '编辑选股策略' : '编辑交易策略'"
-      width="940px"
+      :width="editType === 'trade' ? '860px' : '940px'"
       class="edit-dialog"
       :close-on-click-modal="false"
+      draggable
       destroy-on-close
     >
-      <div class="edit-shell" v-if="editForm">
+      <div class="edit-shell" :class="{ 'is-trade': editType === 'trade' }" v-if="editForm">
         <!-- 选股：左列基础信息+排序，右列筛选 -->
         <template v-if="editType === 'select'">
           <div class="edit-two-col">
@@ -428,12 +384,22 @@
             </div>
             <div class="trade-form-grid">
               <div class="field">
-                <div class="field-label">买入条件</div>
-                <TradeConditionEditor v-model="editForm.snapshot.entry.conditions" />
+                <div class="field-label with-meta">
+                  <span>买入条件</span>
+                  <span class="field-meta">共{{ editForm.snapshot.entry.conditions.length }}条</span>
+                </div>
+                <div class="trade-cond-box scroll-hidden">
+                  <TradeConditionEditor v-model="editForm.snapshot.entry.conditions" />
+                </div>
               </div>
               <div class="field">
-                <div class="field-label">卖出条件</div>
-                <TradeConditionEditor v-model="editForm.snapshot.exit.conditions" />
+                <div class="field-label with-meta">
+                  <span>卖出条件</span>
+                  <span class="field-meta">共{{ editForm.snapshot.exit.conditions.length }}条</span>
+                </div>
+                <div class="trade-cond-box scroll-hidden">
+                  <TradeConditionEditor v-model="editForm.snapshot.exit.conditions" />
+                </div>
               </div>
             </div>
           </div>
@@ -504,7 +470,6 @@ import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import {
   createDefaultTradeSnapshot,
-  getTradeDisplayEntries,
   normalizeTradeSnapshot
 } from '@/utils/tradeStrategy'
 import SaveStrategyDialog from '@/components/SaveStrategyDialog.vue'
@@ -752,6 +717,11 @@ const jumpToApplied = async (type) => {
 
   ElMessage.info('该策略未收藏，已为你打开“全部策略”定位')
   await openAllAndFocus(type, id)
+}
+
+const openTradeDetail = async (s) => {
+  if (!s?.id) return
+  await openAllAndFocus('trade', s.id)
 }
 
 /** 编辑弹窗（保留） */
@@ -1024,11 +994,6 @@ const detailFilterText = computed(() => {
   return parts.length ? parts.join('，') : '无筛选条件'
 })
 
-const detailTradeEntries = computed(() => {
-  const s = activeStrategy.value
-  return getTradeDisplayEntries(s?.snapshot)
-})
-
 /** ===== 文本展示（保留原逻辑） ===== */
 const metricsTextShort = (snap) => {
   const keys = (snap?.selectedMetrics || []).filter(Boolean).slice(0, 3)
@@ -1081,10 +1046,6 @@ const buildFilterParts = (f) => {
   return parts
 }
 
-const tradeRulesTextShort = (snap) => {
-  const entries = getTradeDisplayEntries(snap)
-  return entries.length ? '买卖条件 + 风险仓位' : '未配置'
-}
 </script>
 
 <style scoped>
@@ -1329,6 +1290,16 @@ const tradeRulesTextShort = (snap) => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.s-line2.s-desc{
+  align-items: flex-start;
+}
+.s-line2.s-desc .val{
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 .s-actions{
   border-top: 1px dashed rgba(0,0,0,.06);
@@ -1411,6 +1382,17 @@ const tradeRulesTextShort = (snap) => {
   flex-direction: column;
   gap: 14px;
 }
+.edit-shell.is-trade{
+  height: auto;
+  overflow: visible;
+}
+.edit-shell.is-trade .edit-top-card,
+.edit-shell.is-trade .panel{
+  padding: 10px;
+}
+.edit-shell.is-trade .panel-head{
+  margin-bottom: 8px;
+}
 
 /* 新增：选股编辑两列布局（左：基础+排序 / 右：筛选） */
 .edit-two-col{
@@ -1487,18 +1469,80 @@ const tradeRulesTextShort = (snap) => {
   font-weight: 800;
   color:#6b7280;
 }
+.field-label.with-meta{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.field-meta{
+  font-size: 11px;
+  font-weight: 800;
+  color:#475569;
+  background: rgba(148, 163, 184, .18);
+  border: 1px solid rgba(148, 163, 184, .32);
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 18px;
+}
 .trade-form-grid{
   display:grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  align-items: start;
+}
+.trade-form-grid .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
+}
+.trade-cond-box{
+  margin-top: 2px;
+  height: 170px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.trade-cond-box::-webkit-scrollbar{
+  width: 0;
+  height: 0;
+}
+.trade-cond-box :deep(.cond-editor){
+  min-height: 100%;
+}
+.trade-cond-box::after{
+  content: '';
+  position: sticky;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 8px;
+  background: linear-gradient(to bottom, rgba(248,250,252,0), rgba(248,250,252,.55));
+  pointer-events: none;
 }
 .trade-trigger-row{
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+}
+.trade-trigger-row .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
 }
 .trade-risk-grid{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+}
+.trade-risk-grid .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
 }
 </style>
 

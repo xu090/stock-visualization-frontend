@@ -1,48 +1,52 @@
-<template>
+﻿<template>
   <div class="cond-editor">
-    <div v-if="!rows.length" class="empty-tip">暂无条件，点击下方“新增条件”。</div>
+    <div v-if="!rows.length" class="empty-tip">暂无条件，点击下方“新增条件”开始配置。</div>
 
     <div v-for="(row, idx) in rows" :key="idx" class="cond-row">
-      <el-select
-        v-if="idx > 0"
-        v-model="row.connector"
-        size="small"
-        class="w-join"
-      >
-        <el-option label="并且(AND)" value="AND" />
-        <el-option label="或者(OR)" value="OR" />
-      </el-select>
-      <div v-else class="first-tag">条件{{ idx + 1 }}</div>
+      <div class="cond-row-main">
+        <el-select
+          v-if="idx > 0"
+          v-model="row.connector"
+          size="small"
+          class="w-join"
+        >
+          <el-option label="并且(AND)" value="AND" />
+          <el-option label="或者(OR)" value="OR" />
+        </el-select>
+        <div v-else class="first-tag">条件{{ idx + 1 }}</div>
 
-      <el-select v-model="row.field" size="small" class="w-field">
-        <el-option
-          v-for="f in fields"
-          :key="f.key"
-          :label="f.label"
-          :value="f.key"
+        <el-select v-model="row.field" size="small" class="w-field">
+          <el-option
+            v-for="f in fields"
+            :key="f.key"
+            :label="f.label"
+            :value="f.key"
+          />
+        </el-select>
+
+        <el-select v-model="row.op" size="small" class="w-op">
+          <el-option
+            v-for="op in operators"
+            :key="op.value"
+            :label="op.label"
+            :value="op.value"
+          />
+        </el-select>
+      </div>
+
+      <div class="cond-row-sub">
+        <el-input-number
+          v-model="row.value"
+          :step="0.1"
+          :precision="2"
+          controls-position="right"
+          class="w-val"
         />
-      </el-select>
 
-      <el-select v-model="row.op" size="small" class="w-op">
-        <el-option
-          v-for="op in operators"
-          :key="op.value"
-          :label="op.label"
-          :value="op.value"
-        />
-      </el-select>
+        <span class="unit">{{ unitOf(row.field) || '-' }}</span>
 
-      <el-input-number
-        v-model="row.value"
-        :step="0.1"
-        :precision="2"
-        controls-position="right"
-        class="w-val"
-      />
-
-      <span class="unit">{{ unitOf(row.field) }}</span>
-
-      <el-button link type="danger" @click="removeRow(idx)">删除</el-button>
+        <el-button link type="danger" class="btn-delete" @click="removeRow(idx)">删除</el-button>
+      </div>
     </div>
 
     <div class="cond-actions">
@@ -102,21 +106,40 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
 }
 .empty-tip{
   font-size: 12px;
-  color:#9ca3af;
+  color:#64748b;
   font-weight: 700;
+  background: rgba(148, 163, 184, .08);
+  border: 1px dashed rgba(148, 163, 184, .3);
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 .cond-row{
   display:flex;
-  align-items:center;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
 }
-.w-join{ width: 100px; }
-.w-field{ width: 140px; }
-.w-op{ width: 110px; }
-.w-val{ width: 150px; }
+.cond-row-main{
+  display:grid;
+  grid-template-columns: 96px 1fr 118px;
+  gap: 8px;
+  align-items:center;
+}
+.cond-row-sub{
+  display:grid;
+  grid-template-columns: minmax(140px, 1fr) 42px auto;
+  gap: 8px;
+  align-items:center;
+}
+.w-join{ width: 100%; }
+.w-field{ width: 100%; }
+.w-op{ width: 100%; }
+.w-val{ width: 100%; }
 .first-tag{
-  min-width: 100px;
+  width: 100%;
   height: 32px;
   display:inline-flex;
   align-items:center;
@@ -131,10 +154,24 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
 .unit{
   font-size: 12px;
   color:#6b7280;
-  min-width: 18px;
+  min-width: 24px;
+  font-weight: 700;
+}
+.btn-delete{
+  justify-self: end;
 }
 .cond-actions{
   display:flex;
   gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 820px){
+  .cond-row-main{
+    grid-template-columns: 1fr;
+  }
+  .cond-row-sub{
+    grid-template-columns: 1fr auto auto;
+  }
 }
 </style>

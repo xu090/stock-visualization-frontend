@@ -5,6 +5,7 @@
     width="480px"
     class="save-strategy-dialog"
     :close-on-click-modal="false"
+    draggable
     align-center
   >
     <!-- 顶部说明（更专业、更像产品） -->

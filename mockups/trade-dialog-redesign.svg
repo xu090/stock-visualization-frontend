@@ -1,0 +1,89 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f4f7fb"/>
+      <stop offset="100%" stop-color="#eef2f7"/>
+    </linearGradient>
+    <style>
+      .title{font:700 36px 'Microsoft YaHei',sans-serif;fill:#0f172a}
+      .sub{font:500 18px 'Microsoft YaHei',sans-serif;fill:#64748b}
+      .h2{font:700 24px 'Microsoft YaHei',sans-serif;fill:#0f172a}
+      .txt{font:500 16px 'Microsoft YaHei',sans-serif;fill:#334155}
+      .meta{font:700 14px 'Microsoft YaHei',sans-serif;fill:#475569}
+      .num{font:700 18px 'Microsoft YaHei',sans-serif;fill:#0f172a}
+      .btn{font:700 18px 'Microsoft YaHei',sans-serif;fill:#fff}
+      .chip{font:700 14px 'Microsoft YaHei',sans-serif;fill:#0f172a}
+      .th{font:700 14px 'Microsoft YaHei',sans-serif;fill:#64748b}
+      .td{font:600 15px 'Microsoft YaHei',sans-serif;fill:#0f172a}
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="url(#bg)"/>
+
+  <rect x="120" y="48" width="1160" height="804" rx="18" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="160" y="98" class="title">编辑交易策略（改版示意）</text>
+  <text x="160" y="130" class="sub">分层展示 + 渐进编辑，默认可见全部关键数据</text>
+
+  <!-- 摘要条 -->
+  <rect x="160" y="154" width="1080" height="86" rx="14" fill="#f8fbff" stroke="#cfe0fb"/>
+  <text x="182" y="188" class="meta">策略：趋势突破-放量确认</text>
+  <text x="470" y="188" class="meta">触发：收盘触发</text>
+  <text x="640" y="188" class="meta">买入：4条</text>
+  <text x="760" y="188" class="meta">卖出：2条</text>
+  <text x="880" y="188" class="meta">止损：3.5%</text>
+  <text x="995" y="188" class="meta">止盈：10%</text>
+  <text x="1100" y="188" class="meta">仓位上限：60%</text>
+  <rect x="1080" y="202" width="140" height="28" rx="8" fill="#3b82f6"/>
+  <text x="1120" y="222" class="btn">保存修改</text>
+
+  <!-- 基本信息 -->
+  <rect x="160" y="264" width="1080" height="118" rx="14" fill="#fff" stroke="#dbe3ef"/>
+  <text x="182" y="296" class="h2">基本信息</text>
+  <rect x="1080" y="276" width="130" height="28" rx="14" fill="#e8f1ff"/>
+  <text x="1115" y="296" class="chip">已配置 2/2</text>
+  <rect x="182" y="314" width="500" height="48" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <rect x="698" y="314" width="520" height="48" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <text x="198" y="344" class="txt">策略名称：趋势突破-放量确认</text>
+  <text x="714" y="344" class="txt">策略描述：适用于A股个股，收盘突破 + 放量入场</text>
+
+  <!-- 买卖条件 -->
+  <rect x="160" y="396" width="1080" height="304" rx="14" fill="#fff" stroke="#dbe3ef"/>
+  <text x="182" y="428" class="h2">买卖条件</text>
+  <rect x="1080" y="408" width="130" height="28" rx="14" fill="#e8f1ff"/>
+  <text x="1115" y="428" class="chip">已配置 6/6</text>
+
+  <rect x="182" y="444" width="1036" height="44" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <text x="204" y="472" class="txt">触发方式：收盘触发  |  条件逻辑：买入（且） / 卖出（或）</text>
+
+  <!-- 左右表格 -->
+  <rect x="182" y="502" width="506" height="180" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <rect x="712" y="502" width="506" height="180" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <text x="202" y="528" class="meta">买入条件（4条）</text>
+  <text x="732" y="528" class="meta">卖出条件（2条）</text>
+
+  <!-- 表头 -->
+  <text x="202" y="552" class="th">连接</text><text x="270" y="552" class="th">指标</text><text x="350" y="552" class="th">运算</text><text x="430" y="552" class="th">数值</text><text x="500" y="552" class="th">单位</text>
+  <text x="732" y="552" class="th">连接</text><text x="800" y="552" class="th">指标</text><text x="880" y="552" class="th">运算</text><text x="960" y="552" class="th">数值</text><text x="1030" y="552" class="th">单位</text>
+
+  <!-- 行 -->
+  <text x="202" y="578" class="td">条件1</text><text x="270" y="578" class="td">涨跌幅</text><text x="350" y="578" class="td">&gt;=</text><text x="430" y="578" class="td">1.5</text><text x="500" y="578" class="td">%</text>
+  <text x="202" y="604" class="td">且</text><text x="270" y="604" class="td">量比</text><text x="350" y="604" class="td">&gt;=</text><text x="430" y="604" class="td">1.6</text><text x="500" y="604" class="td">-</text>
+  <text x="202" y="630" class="td">且</text><text x="270" y="630" class="td">净流入</text><text x="350" y="630" class="td">&gt;</text><text x="430" y="630" class="td">0</text><text x="500" y="630" class="td">亿</text>
+  <text x="202" y="656" class="td">且</text><text x="270" y="656" class="td">收盘价</text><text x="350" y="656" class="td">&gt;</text><text x="430" y="656" class="td">MA20</text><text x="500" y="656" class="td">-</text>
+
+  <text x="732" y="578" class="td">条件1</text><text x="800" y="578" class="td">涨跌幅</text><text x="880" y="578" class="td">&lt;=</text><text x="960" y="578" class="td">-2</text><text x="1030" y="578" class="td">%</text>
+  <text x="732" y="604" class="td">或</text><text x="800" y="604" class="td">净流入</text><text x="880" y="604" class="td">&lt;</text><text x="960" y="604" class="td">0</text><text x="1030" y="604" class="td">亿</text>
+
+  <!-- 风险与仓位 -->
+  <rect x="160" y="714" width="1080" height="106" rx="14" fill="#fff" stroke="#dbe3ef"/>
+  <text x="182" y="746" class="h2">风险与仓位</text>
+  <rect x="1080" y="726" width="130" height="28" rx="14" fill="#e8f1ff"/>
+  <text x="1115" y="746" class="chip">已配置 3/3</text>
+
+  <rect x="182" y="760" width="330" height="42" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <rect x="532" y="760" width="330" height="42" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <rect x="882" y="760" width="336" height="42" rx="10" fill="#f8fafc" stroke="#dbe3ef"/>
+  <text x="198" y="786" class="txt">止损(%)：3.5</text>
+  <text x="548" y="786" class="txt">止盈(%)：10</text>
+  <text x="898" y="786" class="txt">仓位上限(%)：60</text>
+</svg>

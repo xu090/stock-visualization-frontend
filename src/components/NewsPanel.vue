@@ -58,6 +58,7 @@
       v-model="dialogVisible"
       width="700px"
       class="news-detail-dialog"
+      draggable
       append-to-body
     >
       <template #header>
@@ -187,7 +188,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineEmits, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { List } from '@element-plus/icons-vue'
 import { useNewsStore } from '@/stores/news'

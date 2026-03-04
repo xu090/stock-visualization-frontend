@@ -4,6 +4,7 @@
     title="全部策略"
     width="650px"
     class="all-strategy-dialog"
+    draggable
     destroy-on-close
   >
     <el-tabs v-model="dialogTab">
@@ -98,13 +99,41 @@
                 <div class="k">描述</div>
                 <div class="v">{{ s.desc || '无描述' }}</div>
               </div>
+
               <div
                 v-for="(row, idx) in tradeDisplayEntries(s.snapshot)"
                 :key="`all-tr-row-${s.id}-${idx}`"
-                class="all-info-row"
+                class="trade-info-block"
               >
-                <div class="k">{{ row.key }}</div>
-                <div class="v">{{ row.value }}</div>
+                <div class="trade-info-title">{{ row.key }}</div>
+                <div v-if="row.key === '买卖条件'" class="trade-cond-sections">
+                  <div
+                    v-for="(sec, secIdx) in tradeConditionSections(row.value)"
+                    :key="`all-tr-row-${s.id}-${idx}-sec-${secIdx}`"
+                    class="trade-cond-section"
+                  >
+                    <div class="trade-cond-label">{{ sec.label }}</div>
+                    <div class="trade-cond-items">
+                      <div
+                        v-for="(item, itemIdx) in sec.items"
+                        :key="`all-tr-row-${s.id}-${idx}-sec-${secIdx}-item-${itemIdx}`"
+                        class="trade-cond-item"
+                      >
+                        <span class="trade-cond-num">{{ item.num }}</span>
+                        <span class="trade-cond-text">{{ item.text }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="trade-info-lines">
+                  <div
+                    v-for="(line, lineIdx) in tradeDisplayLines(row.value)"
+                    :key="`all-tr-row-${s.id}-${idx}-line-${lineIdx}`"
+                    class="trade-info-line"
+                  >
+                    {{ line }}
+                  </div>
+                </div>
               </div>
             </div>
             <div class="all-actions">
@@ -139,10 +168,11 @@
     width="940px"
     class="edit-dialog"
     :close-on-click-modal="false"
+    draggable
     append-to-body
     destroy-on-close
   >
-    <div class="edit-shell" v-if="createForm">
+    <div class="edit-shell" :class="{ 'is-trade': createType === 'trade' }" v-if="createForm">
       <template v-if="createType === 'select'">
         <div class="edit-two-col">
           <div class="col-left">
@@ -219,12 +249,22 @@
           </div>
           <div class="trade-form-grid">
             <div class="field">
-              <div class="field-label">买入条件</div>
-              <TradeConditionEditor v-model="createForm.snapshot.entry.conditions" />
+              <div class="field-label with-meta">
+                <span>买入条件</span>
+                <span class="field-meta">共{{ createForm.snapshot.entry.conditions.length }}条</span>
+              </div>
+              <div class="trade-cond-box scroll-hidden">
+                <TradeConditionEditor v-model="createForm.snapshot.entry.conditions" />
+              </div>
             </div>
             <div class="field">
-              <div class="field-label">卖出条件</div>
-              <TradeConditionEditor v-model="createForm.snapshot.exit.conditions" />
+              <div class="field-label with-meta">
+                <span>卖出条件</span>
+                <span class="field-meta">共{{ createForm.snapshot.exit.conditions.length }}条</span>
+              </div>
+              <div class="trade-cond-box scroll-hidden">
+                <TradeConditionEditor v-model="createForm.snapshot.exit.conditions" />
+              </div>
             </div>
           </div>
         </div>
@@ -386,6 +426,58 @@ const buildFilterParts = (f) => {
 
 const tradeDisplayEntries = (snap) => {
   return getTradeDisplayEntries(snap)
+}
+
+const tradeDisplayLines = (text) => {
+  const raw = String(text || '')
+  if (!raw.trim()) return ['未配置']
+  return raw
+    .split(/[；;]\s*/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s =>
+      s
+        .replace(/\bAND\b/g, '且')
+        .replace(/\bOR\b/g, '或')
+    )
+}
+
+const toConditionItem = (line) => {
+  const text = String(line || '').trim()
+  const numbered = text.match(/^(\d+)[.、]\s*(.+)$/)
+  if (numbered) {
+    return { num: `${numbered[1]}.`, text: numbered[2].trim() }
+  }
+  return { num: '', text }
+}
+
+const tradeConditionSections = (text) => {
+  const lines = tradeDisplayLines(text)
+  if (!lines.length) return [{ label: '条件', items: [toConditionItem('未配置')] }]
+
+  const sections = []
+  let current = null
+
+  const pushCurrent = () => {
+    if (!current) return
+    if (!current.items.length) current.items.push(toConditionItem('未配置'))
+    sections.push(current)
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    const head = line.match(/^(触发方式|买入条件|卖出条件)\s*[：:]\s*(.*)$/)
+    if (head) {
+      pushCurrent()
+      current = { label: head[1], items: [] }
+      if (head[2]) current.items.push(toConditionItem(head[2]))
+      continue
+    }
+    if (!current) current = { label: '条件', items: [] }
+    current.items.push(toConditionItem(line))
+  }
+  pushCurrent()
+  return sections
 }
 
 const emptySelectFilters = () => ({
@@ -614,6 +706,82 @@ const submitCreate = () => {
   font-weight: 700;
   white-space: pre-wrap;
 }
+.trade-info-block{
+  border: 1px solid rgba(15, 23, 42, .08);
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.trade-info-title{
+  font-size: 12px;
+  font-weight: 900;
+  color:#334155;
+  margin-bottom: 6px;
+}
+.trade-info-lines{
+  display:flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trade-cond-sections{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.trade-cond-section{
+  display:grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.trade-cond-label{
+  font-size: 12px;
+  font-weight: 900;
+  color:#475569;
+  line-height: 1.5;
+}
+.trade-cond-items{
+  display:flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trade-cond-item{
+  display:grid;
+  grid-template-columns: 26px 1fr;
+  gap: 2px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.5;
+  color:#0f172a;
+  font-weight: 700;
+}
+.trade-cond-num{
+  color:#64748b;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.trade-cond-text{
+  white-space: pre-wrap;
+}
+.trade-info-line{
+  position: relative;
+  padding-left: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color:#0f172a;
+  font-weight: 700;
+  white-space: pre-wrap;
+}
+.trade-info-line::before{
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #64748b;
+}
 .all-actions{
   display:flex;
   flex-wrap: wrap;
@@ -642,6 +810,17 @@ const submitCreate = () => {
   display:flex;
   flex-direction: column;
   gap: 14px;
+}
+.edit-shell.is-trade{
+  height: auto;
+  overflow: visible;
+}
+.edit-shell.is-trade .edit-top-card,
+.edit-shell.is-trade .panel{
+  padding: 10px;
+}
+.edit-shell.is-trade .panel-head{
+  margin-bottom: 8px;
 }
 .edit-two-col{
   display:grid;
@@ -703,17 +882,79 @@ const submitCreate = () => {
   font-weight: 800;
   color:#6b7280;
 }
+.field-label.with-meta{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.field-meta{
+  font-size: 11px;
+  font-weight: 800;
+  color:#475569;
+  background: rgba(148, 163, 184, .18);
+  border: 1px solid rgba(148, 163, 184, .32);
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 18px;
+}
 .trade-form-grid{
   display:grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  align-items: start;
+}
+.trade-form-grid .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
+}
+.trade-cond-box{
+  margin-top: 2px;
+  height: 170px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.trade-cond-box::-webkit-scrollbar{
+  width: 0;
+  height: 0;
+}
+.trade-cond-box :deep(.cond-editor){
+  min-height: 100%;
+}
+.trade-cond-box::after{
+  content: '';
+  position: sticky;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 8px;
+  background: linear-gradient(to bottom, rgba(248,250,252,0), rgba(248,250,252,.55));
+  pointer-events: none;
 }
 .trade-trigger-row{
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+}
+.trade-trigger-row .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
 }
 .trade-risk-grid{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+}
+.trade-risk-grid .field{
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 12px;
+  padding: 10px;
 }
 </style>
