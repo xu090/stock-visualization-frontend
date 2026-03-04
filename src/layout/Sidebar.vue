@@ -32,7 +32,7 @@
         <div class="fav-table-head">
           <span class="h-name">{{ activeTopTab === 'industry' ? '行业名称' : '概念名称' }}</span>
           <span class="h-mid">涨跌幅</span>
-          <span class="h-right">涨跌额</span>
+          <span class="h-right">净流入</span>
         </div>
 
         <!-- ✅ 内部滚动 -->
@@ -58,8 +58,8 @@
             </div>
 
             <div class="cell right">
-              <span class="num" :class="moneyClass(c.changeAmount)">
-                {{ fmtMoneySigned(c.changeAmount) }}
+              <span class="num" :class="moneyClass(c.netInflow)">
+                {{ fmtMoneySigned(c.netInflow) }}
               </span>
             </div>
           </div>
@@ -175,7 +175,7 @@ watch(activeTopTab, (tab) => {
   }
 })
 
-/** ✅ 概念自选补齐指标：从 conceptOverviewAll 取 change/changeAmount（含系统+自定义） */
+/** ✅ 概念自选补齐指标：从 conceptOverviewAll 取 change/netInflow（含系统+自定义） */
 const overviewMap = computed(() => {
   const map = Object.create(null)
   ;(conceptStore.conceptOverviewAll || []).forEach(c => { map[String(c.id)] = c })
@@ -187,16 +187,11 @@ const myConceptsEnriched = computed(() => {
   return list.map(c => {
     const id = String(c.id)
     const ov = overviewMap.value[id] || {}
-    const change = Number(ov.change ?? c.change ?? 0)
-    const amount = Number(ov.amount ?? c.amount ?? 0)
-    const fallbackChangeAmount = Number.isFinite(amount) && Number.isFinite(change)
-      ? (amount * change) / 100
-      : 0
     return {
       ...c,
       id,
-      change,
-      changeAmount: ov.changeAmount ?? c.changeAmount ?? fallbackChangeAmount,
+      change: ov.change ?? c.change ?? 0,
+      netInflow: ov.netInflow ?? c.netInflow ?? 0,
 
       // 兼容字段
       change5d: ov.change5d ?? ov.rtChange5d ?? ov.change5m ?? ov.change ?? 0,
@@ -581,4 +576,3 @@ const fmtMoneySigned = (v) => {
 .pad{ height: 10px; flex-shrink: 0; }
 </style>
 
-NewsPanel.vue
