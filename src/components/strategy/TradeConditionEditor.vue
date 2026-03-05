@@ -1,52 +1,58 @@
 ﻿<template>
   <div class="cond-editor">
+    <div class="cond-head" v-if="rows.length">
+      <span>连接</span>
+      <span>指标</span>
+      <span>运算</span>
+      <span>数值</span>
+      <span>单位</span>
+      <span>操作</span>
+    </div>
+
     <div v-if="!rows.length" class="empty-tip">暂无条件，点击下方“新增条件”开始配置。</div>
 
     <div v-for="(row, idx) in rows" :key="idx" class="cond-row">
-      <div class="cond-row-main">
-        <el-select
-          v-if="idx > 0"
-          v-model="row.connector"
-          size="small"
-          class="w-join"
-        >
-          <el-option label="并且(AND)" value="AND" />
-          <el-option label="或者(OR)" value="OR" />
-        </el-select>
-        <div v-else class="first-tag">条件{{ idx + 1 }}</div>
+      <el-select
+        v-if="idx > 0"
+        v-model="row.connector"
+        size="small"
+        class="w-join"
+        placeholder="连接"
+      >
+        <el-option label="并且(AND)" value="AND" />
+        <el-option label="或者(OR)" value="OR" />
+      </el-select>
+      <div v-else class="first-tag">条件{{ idx + 1 }}</div>
 
-        <el-select v-model="row.field" size="small" class="w-field">
-          <el-option
-            v-for="f in fields"
-            :key="f.key"
-            :label="f.label"
-            :value="f.key"
-          />
-        </el-select>
-
-        <el-select v-model="row.op" size="small" class="w-op">
-          <el-option
-            v-for="op in operators"
-            :key="op.value"
-            :label="op.label"
-            :value="op.value"
-          />
-        </el-select>
-      </div>
-
-      <div class="cond-row-sub">
-        <el-input-number
-          v-model="row.value"
-          :step="0.1"
-          :precision="2"
-          controls-position="right"
-          class="w-val"
+      <el-select v-model="row.field" size="small" class="w-field" placeholder="请选择指标">
+        <el-option
+          v-for="f in fields"
+          :key="f.key"
+          :label="f.label"
+          :value="f.key"
         />
+      </el-select>
 
-        <span class="unit">{{ unitOf(row.field) || '-' }}</span>
+      <el-select v-model="row.op" size="small" class="w-op" placeholder="请选择运算符">
+        <el-option
+          v-for="op in operators"
+          :key="op.value"
+          :label="op.label"
+          :value="op.value"
+        />
+      </el-select>
 
-        <el-button link type="danger" class="btn-delete" @click="removeRow(idx)">删除</el-button>
-      </div>
+      <el-input-number
+        v-model="row.value"
+        :step="0.1"
+        :precision="2"
+        controls-position="right"
+        class="w-val"
+      />
+
+      <span class="unit">{{ unitOf(row.field) || '-' }}</span>
+
+      <el-button link type="danger" class="btn-delete" @click="removeRow(idx)">删除</el-button>
     </div>
 
     <div class="cond-actions">
@@ -102,7 +108,17 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
 .cond-editor{
   display:flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+}
+.cond-head{
+  display:grid;
+  grid-template-columns: 104px minmax(120px, 1fr) 108px minmax(112px, .78fr) 42px 44px;
+  gap: 8px;
+  align-items:center;
+  font-size: 12px;
+  font-weight: 800;
+  color:#64748b;
+  padding: 0 2px;
 }
 .empty-tip{
   font-size: 12px;
@@ -114,25 +130,14 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
   padding: 10px 12px;
 }
 .cond-row{
-  display:flex;
-  flex-direction: column;
+  display:grid;
+  grid-template-columns: 104px minmax(120px, 1fr) 108px minmax(112px, .78fr) 42px 44px;
+  align-items:center;
   gap: 8px;
   border: 1px solid rgba(0,0,0,.06);
   border-radius: 10px;
-  padding: 10px;
+  padding: 8px;
   background: #fff;
-}
-.cond-row-main{
-  display:grid;
-  grid-template-columns: 96px 1fr 118px;
-  gap: 8px;
-  align-items:center;
-}
-.cond-row-sub{
-  display:grid;
-  grid-template-columns: minmax(140px, 1fr) 42px auto;
-  gap: 8px;
-  align-items:center;
 }
 .w-join{ width: 100%; }
 .w-field{ width: 100%; }
@@ -154,11 +159,12 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
 .unit{
   font-size: 12px;
   color:#6b7280;
-  min-width: 24px;
   font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
 }
 .btn-delete{
-  justify-self: end;
+  justify-self: center;
 }
 .cond-actions{
   display:flex;
@@ -167,11 +173,13 @@ const unitOf = (field) => fields.find(x => x.key === field)?.unit || ''
 }
 
 @media (max-width: 820px){
-  .cond-row-main{
+  .cond-head{
+    display:none;
+  }
+  .cond-row{
     grid-template-columns: 1fr;
   }
-  .cond-row-sub{
-    grid-template-columns: 1fr auto auto;
-  }
+  .btn-delete{ justify-self: end; }
+  .unit{ text-align: left; }
 }
 </style>

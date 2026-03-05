@@ -295,7 +295,7 @@
     <el-dialog
       v-model="editVisible"
       :title="editType === 'select' ? '编辑选股策略' : '编辑交易策略'"
-      :width="editType === 'trade' ? '860px' : '940px'"
+      :width="editType === 'trade' ? '700px' : '940px'"
       class="edit-dialog"
       :close-on-click-modal="false"
       draggable
@@ -356,52 +356,39 @@
 
         <!-- 交易 -->
         <template v-else>
-          <div class="edit-top-card">
-            <div class="edit-top-grid">
-              <div class="field">
-                <div class="panel-title">策略名称</div>
-                <el-input v-model="editForm.name" placeholder="请输入策略名称" />
-              </div>
-              <div class="field">
-                <div class="panel-title">策略描述</div>
-                <el-input v-model="editForm.desc" type="textarea" :rows="2" placeholder="用于复盘/备注（可选）" />
-              </div>
+          <div class="trade-basic">
+            <div class="trade-inline-row">
+              <div style="font-weight: 500;color: #000;">策略名称：</div>
+              <el-input v-model="editForm.name" placeholder="请输入策略名称" />
+            </div>
+            <div class="trade-inline-row">
+              <div style="font-weight: 500;color: #000;">策略描述：</div>
+              <el-input v-model="editForm.desc" type="textarea" :rows="2" placeholder="用于复盘/备注（可选）" />
             </div>
           </div>
 
           <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title">买卖条件</div>
-            </div>
             <div class="trade-trigger-row">
-              <div class="field">
-                <div class="field-label">触发方式</div>
-                <el-radio-group v-model="editForm.snapshot.entry.triggerMode">
-                  <el-radio-button label="close">收盘触发</el-radio-button>
-                  <el-radio-button label="intraday">盘中触发</el-radio-button>
+              <div class="trigger-inline">
+                <div style="font-weight: 500;color: #000;">触发方式：</div>
+                <el-radio-group v-model="editForm.snapshot.entry.triggerMode" class="trigger-radio-group">
+                  <el-radio label="close">收盘触发</el-radio>
+                  <el-radio label="intraday">盘中触发</el-radio>
                 </el-radio-group>
               </div>
             </div>
-            <div class="trade-form-grid">
-              <div class="field">
-                <div class="field-label with-meta">
-                  <span>买入条件</span>
-                  <span class="field-meta">共{{ editForm.snapshot.entry.conditions.length }}条</span>
-                </div>
+            <el-tabs v-model="editTradeCondTab" class="trade-cond-tabs">
+              <el-tab-pane :label="`买入条件（${editForm.snapshot.entry.conditions.length}）`" name="entry">
                 <div class="trade-cond-box scroll-hidden">
                   <TradeConditionEditor v-model="editForm.snapshot.entry.conditions" />
                 </div>
-              </div>
-              <div class="field">
-                <div class="field-label with-meta">
-                  <span>卖出条件</span>
-                  <span class="field-meta">共{{ editForm.snapshot.exit.conditions.length }}条</span>
-                </div>
+              </el-tab-pane>
+              <el-tab-pane :label="`卖出条件（${editForm.snapshot.exit.conditions.length}）`" name="exit">
                 <div class="trade-cond-box scroll-hidden">
                   <TradeConditionEditor v-model="editForm.snapshot.exit.conditions" />
                 </div>
-              </div>
-            </div>
+              </el-tab-pane>
+            </el-tabs>
           </div>
 
           <div class="panel">
@@ -728,6 +715,7 @@ const openTradeDetail = async (s) => {
 const editVisible = ref(false)
 const editType = ref('select')
 const editForm = ref(null)
+const editTradeCondTab = ref('entry')
 
 const ensureFilterShape = (filters) => {
   const f = filters || {}
@@ -741,6 +729,7 @@ const ensureFilterShape = (filters) => {
 
 const openEdit = (type, s) => {
   editType.value = type
+  editTradeCondTab.value = 'entry'
   const clone = JSON.parse(JSON.stringify(s || {}))
 
   if (type === 'select') {
@@ -1377,21 +1366,52 @@ const buildFilterParts = (f) => {
 :deep(.edit-dialog .el-dialog__body){
   padding: 14px 16px 12px;
 }
+.edit-dialog :deep(.el-dialog__header){
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(148,163,184,.18);
+}
+.edit-dialog :deep(.el-dialog__title){
+  font-size: 15px;
+  font-weight: 800;
+  color:#0f172a;
+}
 .edit-shell{
   display:flex;
   flex-direction: column;
   gap: 14px;
 }
 .edit-shell.is-trade{
-  height: auto;
-  overflow: visible;
+  height: 590px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  gap: 12px;
+  padding: 2px 2px 0;
 }
-.edit-shell.is-trade .edit-top-card,
+.edit-shell.is-trade::-webkit-scrollbar{ width: 0; height: 0; }
 .edit-shell.is-trade .panel{
-  padding: 10px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+}
+.edit-shell.is-trade .panel + .panel{
+  border-top: 1px solid rgba(148,163,184,.22);
+  margin-top: 6px;
+  padding-top: 12px;
 }
 .edit-shell.is-trade .panel-head{
   margin-bottom: 8px;
+  padding: 0 2px;
+}
+.edit-shell.is-trade .panel-title{
+  font-size: 14px;
+  font-weight: 700;
+}
+.edit-shell.is-trade .field-label{
+  font-size: 12px;
 }
 
 /* 新增：选股编辑两列布局（左：基础+排序 / 右：筛选） */
@@ -1426,7 +1446,59 @@ const buildFilterParts = (f) => {
   grid-template-columns: 1fr 1.05fr;
   gap: 14px;
 }
+.trade-top-grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.trade-basic{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px 2px;
+}
+.trade-inline-row{
+  display:grid;
+  grid-template-columns: 74px 1fr;
+  gap: 8px;
+  align-items:center;
+}
+.inline-label{
+  font-size: 12px;
+  font-weight: 700;
+  color:#475569;
+  line-height: 1;
+}
 .field{ display:flex; flex-direction: column; gap: 8px; }
+.trade-summary-bar{
+  border: 1px solid rgba(59,130,246,.24);
+  background: #f7fbff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display:grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.summary-item{
+  background: #fff;
+  border: 1px solid rgba(148,163,184,.24);
+  border-radius: 10px;
+  padding: 6px 8px;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.summary-item .k{
+  font-size: 12px;
+  color:#64748b;
+  font-weight: 700;
+}
+.summary-item .v{
+  font-size: 13px;
+  color:#0f172a;
+  font-weight: 900;
+}
 
 
 /* 你原来的 edit-grid 保留也不影响（选股不再使用） */
@@ -1487,19 +1559,20 @@ const buildFilterParts = (f) => {
 }
 .trade-form-grid{
   display:grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
   gap: 12px;
   align-items: start;
 }
-.trade-form-grid .field{
-  background: #f8fafc;
-  border: 1px solid rgba(148, 163, 184, .24);
-  border-radius: 12px;
-  padding: 10px;
+.trade-cond-tabs :deep(.el-tabs__header){ margin-bottom: 8px; }
+.trade-cond-tabs :deep(.el-tabs__item){
+  font-weight: 700;
+  font-size: 13px;
+  padding: 0 14px;
 }
+.trade-cond-tabs :deep(.el-tabs__nav-wrap::after){ background-color: rgba(148,163,184,.25); }
 .trade-cond-box{
   margin-top: 2px;
-  height: 170px;
+  height: 220px;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
@@ -1525,24 +1598,45 @@ const buildFilterParts = (f) => {
   pointer-events: none;
 }
 .trade-trigger-row{
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(148,163,184,.35);
 }
-.trade-trigger-row .field{
-  background: #f8fafc;
-  border: 1px solid rgba(148, 163, 184, .24);
-  border-radius: 12px;
-  padding: 10px;
+.trigger-inline{
+  display:flex;
+  align-items:center;
+  gap: 14px;
+  padding: 2px 2px 0;
+}
+.trigger-radio-group{
+  display:flex;
+  align-items:center;
+  gap: 14px;
+}
+.edit-shell.is-trade .trade-trigger-row .field,
+.edit-shell.is-trade .trade-risk-grid .field,
+.edit-shell.is-trade .trade-form-grid .field{
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin-top: 10px;
 }
 .trade-risk-grid{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 .trade-risk-grid .field{
   background: #f8fafc;
   border: 1px solid rgba(148, 163, 184, .24);
   border-radius: 12px;
-  padding: 10px;
+  padding: 8px 10px;
+}
+@media (max-width: 1100px){
+  .trade-summary-bar{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 </style>
 
