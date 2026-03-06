@@ -6,15 +6,11 @@
         <span class="strategy-title">策略中心</span>
 
         <div class="h-top-actions" id="tour-strategy-save">
-          <el-button class="btn-mini" size="small" plain @click="allDialogVisible = true">
-            全部策略
-          </el-button>
-          <el-button class="btn-mini" size="small" type="primary" plain @click="openCreate('select')">
-            保存选股
-          </el-button>
-          <el-button class="btn-mini" size="small" plain @click="openCreate('trade')">
-            保存交易
-          </el-button>
+          <el-tooltip content="查看全部策略" placement="top" effect="dark">
+            <el-button class="btn-icon" size="small" plain @click="allDialogVisible = true">
+              <el-icon><Grid /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
 
@@ -263,6 +259,7 @@
           <div class="empty-sub">后续可在这里保存：买点 / 卖点 / 止损止盈 / 仓位等，也可在“全部策略”中收藏。</div>
         </div>
       </div>
+
     </div>
 
     <AllStrategyDialog
@@ -452,9 +449,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Star, StarFilled } from '@element-plus/icons-vue'
+import { Star, StarFilled, Grid } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
+import { useStockStore } from '@/stores/stock'
+import { useInvestmentPlanStore } from '@/stores/investmentPlan'
 import {
   createDefaultTradeSnapshot,
   normalizeTradeSnapshot
@@ -467,6 +466,8 @@ import TradeConditionEditor from '@/components/strategy/TradeConditionEditor.vue
 
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
+const stockStore = useStockStore()
+const investmentPlanStore = useInvestmentPlanStore()
 const router = useRouter()
 
 /** 指标定义 */
@@ -569,6 +570,21 @@ const applyStrategy = (type, s) => {
     currentAppliedSelectId.value = s.id
   } else {
     currentAppliedTradeId.value = s.id
+    const favoriteCodes = (stockStore.myStockCodes || []).filter(Boolean)
+    if (!favoriteCodes.length) {
+      investmentPlanStore.clear()
+      ElMessage.warning('当前没有自选股票，无法生成投资方案')
+      return
+    }
+    stockStore.initMockQuotes?.(favoriteCodes)
+    const rows = investmentPlanStore.generateFromTradeStrategy({
+      strategy: s,
+      stockStore
+    })
+    const buyCount = rows.filter(x => x.action === 'buy').length
+    const sellCount = rows.filter(x => x.action === 'sell').length
+    ElMessage.success(`已应用：${s.name}；生成方案 ${rows.length} 条（买入 ${buyCount} / 卖出 ${sellCount}）`)
+    return
   }
   ElMessage.success(`已应用：${s.name}`)
 }
@@ -593,6 +609,7 @@ const toggleApply = async (type, s) => {
 
   if (type === 'trade' && s.id === currentAppliedTradeId.value) {
     currentAppliedTradeId.value = null
+    investmentPlanStore.clear()
     ElMessage.success('已取消交易策略应用')
     await ensureHomePage()
     return
@@ -609,20 +626,17 @@ const clearApplied = (type) => {
     ElMessage.success('已清空选股策略')
   } else {
     currentAppliedTradeId.value = null
+    investmentPlanStore.clear()
     ElMessage.success('已清空交易策略')
   }
 }
+
 
 /** 保存策略 */
 const createVisible = ref(false)
 const createType = ref('select')
 const allDialogVisible = ref(false)
 const allDialogTab = ref('select')
-
-const openCreate = (type) => {
-  createType.value = type
-  createVisible.value = true
-}
 
 const submitCreate = ({ name, desc }) => {
   if (createType.value === 'select') {
@@ -1039,14 +1053,14 @@ const buildFilterParts = (f) => {
 
 <style scoped>
 .strategy-dock{
-  width: 200px;
+  width: 212px;
   height: 333px;
   overflow: hidden;
-  border-top: 1px solid rgba(0,0,0,.06);
-  background: #f7f8fa;
+  background: transparent;
   padding: 8px;
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
 }
 
 /* scrollbar hide */
@@ -1058,31 +1072,29 @@ const buildFilterParts = (f) => {
   display:flex;
   flex-direction: column;
   gap: 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0,0,0,.06);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(148,163,184,.22);
 }
 
 .h-top{
   display:flex;
-  align-items:flex-start;
-  justify-content: flex-start;
+  align-items:center;
+  justify-content: space-between;
   gap: 8px;
 }
 .strategy-title{
-  flex: 0 0 18px;
-  font-weight: 900;
-  font-size: 14px;
-  line-height: 1;
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.1;
   color:#111827;
-  writing-mode: vertical-rl;
-  text-orientation: upright;
-  letter-spacing: 1px;
+  letter-spacing: .2px;
 }
 .h-top-actions{
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   display:flex;
-  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
   margin: 0;
@@ -1132,6 +1144,13 @@ const buildFilterParts = (f) => {
   font-weight: 800;
   margin: 0 !important;
 }
+.btn-icon{
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  font-size: 14px;
+}
 .btn-clear{ padding: 0 6px !important; }
 
 /* body */
@@ -1139,6 +1158,7 @@ const buildFilterParts = (f) => {
   flex: 1 1 auto;
   overflow-y: auto;
   padding-top: 8px;
+  min-height: 0;
 }
 
 /* 分段 */
@@ -1147,17 +1167,22 @@ const buildFilterParts = (f) => {
   display:flex;
   align-items:baseline;
   justify-content: space-between;
-  padding: 2px 2px 6px;
+  padding: 3px 2px 7px;
 }
 .section-title{
-  font-weight: 900;
+  font-weight: 700;
   font-size: 12px;
   color:#374151;
 }
 .section-sub{
-  font-weight: 900;
+  font-weight: 700;
   font-size: 11px;
   color:#9ca3af;
+}
+.plan-head-actions{
+  display:flex;
+  align-items:center;
+  gap: 6px;
 }
 
 .strategy-list{
@@ -1170,8 +1195,8 @@ const buildFilterParts = (f) => {
 .strategy-item{
   background:#fff;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,.06);
-  box-shadow: 0 10px 18px rgba(0,0,0,.05);
+  border: 1px solid rgba(148,163,184,.24);
+  box-shadow: 0 6px 12px rgba(15,23,42,.04);
   overflow: hidden;
 }
 
@@ -1291,7 +1316,7 @@ const buildFilterParts = (f) => {
 }
 
 .s-actions{
-  border-top: 1px dashed rgba(0,0,0,.06);
+  border-top: 1px dashed rgba(148,163,184,.32);
   padding: 8px;
   display:flex;
   flex-wrap: wrap;
@@ -1300,10 +1325,65 @@ const buildFilterParts = (f) => {
 }
 .btn-act{
   height: 26px !important;
+  width: auto;
   padding: 0 8px !important;
   border-radius: 10px !important;
-  font-weight: 900;
+  font-weight: 800;
   font-size: 12px;
+}
+
+.plan-list{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-item{
+  background:#fff;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.06);
+  box-shadow: 0 10px 18px rgba(0,0,0,.05);
+  padding: 8px;
+}
+.plan-item.act-buy{
+  border-left: 3px solid rgba(34,197,94,.9);
+}
+.plan-item.act-sell{
+  border-left: 3px solid rgba(239,68,68,.9);
+}
+.plan-item.act-hold{
+  border-left: 3px solid rgba(148,163,184,.9);
+}
+.plan-line1{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plan-symbol{
+  font-size: 12px;
+  font-weight: 900;
+  color:#111827;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-action{
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  color:#374151;
+  background: rgba(148,163,184,.14);
+  border: 1px solid rgba(148,163,184,.28);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.plan-line2{
+  margin-top: 6px;
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  font-size: 11px;
+  overflow:hidden;
 }
 
 .empty-trade{

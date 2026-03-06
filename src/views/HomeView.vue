@@ -299,6 +299,8 @@
     <ConceptEditorDrawer
       v-model="drawerVisible"
       :editing="editingConcept"
+      mode="dialog"
+      dialog-width="780px"
       @saved="onSaved"
     />
 
@@ -982,6 +984,7 @@ const fmtUpRatio = (v) => {
 .concept-management{
   padding: 10px 12px;
   background: #f4f6f9;
+  position: relative;
 }
 
 /* ✅ 卡片可点击 */

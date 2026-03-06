@@ -1,11 +1,11 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { normalizeTradeSnapshot } from '@/utils/tradeStrategy'
 
 const PRESET_SELECT_STRATEGIES = [
   {
     id: 1001,
     name: '强势主线',
-    desc: '涨跌、资金、活跃度综合筛选（Pareto 排序）',
+    desc: '涨跌、资金、活跃度综合筛选（Pareto排序）',
     isFavorite: true,
     enabled: true,
     snapshot: {
@@ -41,7 +41,7 @@ const PRESET_SELECT_STRATEGIES = [
   {
     id: 1003,
     name: '放量突破',
-    desc: '量比 + 涨跌，筛出放量上攻',
+    desc: '量比 + 涨跌幅，筛出放量上攻',
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -52,8 +52,8 @@ const PRESET_SELECT_STRATEGIES = [
   },
   {
     id: 1004,
-    name: '广度确认',
-    desc: '以上涨占比为主，验证板块扩散',
+    name: '骞垮害纭',
+    desc: '浠ヤ笂娑ㄥ崰姣斾负涓伙紝楠岃瘉鏉垮潡鎵╂暎',
     enabled: true,
     snapshot: {
       scope: 'all',
@@ -124,7 +124,7 @@ const PRESET_TRADE_STRATEGIES = [
       },
       dataBinding: {
         source: 'stockStore.quotesByCode',
-        fields: ['close', 'changePercent', 'volumeRatio', 'amount', 'netInflow', 'mktCap']
+        fields: ['close', 'ma20', 'ma60', 'rsi14', 'atr14Pct', 'volatility20d', 'relativeStrength20d', 'changePercent', 'volumeRatio', 'amount', 'netInflow', 'mktCap']
       },
       entry: {
         expression: 'close > ma20 AND volumeRatio >= 1.6 AND changePercent >= 1.5',
@@ -176,7 +176,7 @@ const PRESET_TRADE_STRATEGIES = [
   {
     id: 2002,
     name: '均值回归-超跌反弹',
-    desc: '短线超跌回弹，强调止损纪律',
+    desc: '短线超跌反弹，强调止损纪律',
     enabled: true,
     snapshot: {
       metadata: {
@@ -189,7 +189,7 @@ const PRESET_TRADE_STRATEGIES = [
       },
       dataBinding: {
         source: 'stockStore.quotesByCode',
-        fields: ['changePercent', 'amplitude', 'turnover', 'volumeRatio', 'netInflow', 'mktCap']
+        fields: ['close', 'ma20', 'rsi14', 'atr14Pct', 'volatility20d', 'change20d', 'changePercent', 'amplitude', 'turnover', 'volumeRatio', 'netInflow', 'mktCap']
       },
       entry: {
         expression: 'changePercent <= -3 AND amplitude >= 4 AND turnover >= 3',
@@ -241,7 +241,7 @@ const PRESET_TRADE_STRATEGIES = [
   {
     id: 2003,
     name: '资金趋势-主力净流入',
-    desc: '以主力/净流入和量比做趋势跟随',
+    desc: '以主力净流入和量比做趋势跟随',
     enabled: true,
     snapshot: {
       metadata: {
@@ -254,7 +254,7 @@ const PRESET_TRADE_STRATEGIES = [
       },
       dataBinding: {
         source: 'stockStore.quotesByCode',
-        fields: ['netInflow', 'mainInflow', 'volumeRatio', 'changePercent', 'amount', 'orderImbalance']
+        fields: ['close', 'ma10', 'ma20', 'rsi14', 'atr14Pct', 'relativeStrength20d', 'netInflow', 'mainInflow', 'volumeRatio', 'changePercent', 'amount', 'orderImbalance']
       },
       entry: {
         expression: 'netInflow > 0 AND mainInflow > 0 AND volumeRatio >= 1.4',
@@ -370,3 +370,4 @@ export const useStrategyStore = defineStore('strategy', {
     }
   }
 })
+

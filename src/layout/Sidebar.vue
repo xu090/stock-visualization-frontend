@@ -46,7 +46,7 @@
           >
             <div class="cell name">
               <el-tooltip :content="c.name" placement="top" effect="dark">
-                <div class="name-main">{{ shortConceptName(c.name) }}</div>
+                <div class="name-main">{{ shortDisplayName(c.name) }}</div>
               </el-tooltip>
             </div>
 
@@ -96,7 +96,7 @@
           >
             <div class="cell name">
               <el-tooltip :content="s.name" placement="top" effect="dark">
-                <div class="name-main">{{ s.name }}</div>
+                <div class="name-main">{{ shortDisplayName(s.name) }}</div>
               </el-tooltip>
               <div class="name-sub">{{ s.code }}</div>
             </div>
@@ -200,13 +200,13 @@ const myConceptsEnriched = computed(() => {
   })
 })
 
-const shortConceptName = (name) => {
+/** 股票自选：名称/代码 + 涨跌幅/涨跌额 */
+const shortDisplayName = (name) => {
   const s = String(name ?? '')
   if (s.length <= 4) return s
-  return `${s.slice(0, 2)}...${s.slice(-1)}`
+  return `${s.slice(0, 2)}..${s.slice(-1)}`
 }
 
-/** 股票自选：名称/代码 + 涨跌幅/涨跌额 */
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
@@ -342,8 +342,8 @@ const fmtMoneySigned = (v) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fff;
-  border-right: 1px solid rgba(0,0,0,.06);
+  background: transparent;
+  border-right: 0;
 }
 
 /* tabs */
@@ -430,9 +430,9 @@ const fmtMoneySigned = (v) => {
 
 /* ✅ 自选区：外层不滚动，给内部列表滚动空间 */
 .fav-wrap{
-  padding: 6px 10px 0;
+  padding: 4px 8px 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -444,7 +444,7 @@ const fmtMoneySigned = (v) => {
   background: #fff;
   border: 1px solid rgba(0,0,0,.06);
   border-radius: 8px;
-  box-shadow: 0 6px 14px rgba(0,0,0,.06);
+  box-shadow: none;
   overflow: hidden;
 
   display: flex;
@@ -454,21 +454,21 @@ const fmtMoneySigned = (v) => {
 
 /* 头部 */
 .fav-head{
-  height: 38px;
-  padding: 0 10px;
+  height: 48px;
+  padding: 0 12px;
   display:flex;
   align-items:center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(0,0,0,.06);
-  background: #fbfcfe;
+  background: #f8fafd;
   flex-shrink: 0;
 }
 .fav-title{
   display:flex;
   align-items:center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 700;
   color: #1f2d3d;
 }
 .fav-ic{ color:#2f80ed; font-size: 16px; }
@@ -486,43 +486,54 @@ const fmtMoneySigned = (v) => {
 
 /* 表头 */
 .fav-table-head{
-  height: 30px;
-  padding: 0 10px;
+  height: 38px;
+  padding: 0 8px;
   display:grid;
-  grid-template-columns: 1fr 56px 66px;
+  grid-template-columns: 1fr 1fr 1fr;
+  column-gap: 4px;
   align-items:center;
-  color:#7a8699;
+  color:#7f8ba2;
   font-size: 12px;
-  font-weight: 900;
-  background: #f7f9fc;
+  font-weight: 800;
+  background: #f4f6fa;
   border-bottom: 1px solid rgba(0,0,0,.04);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
-.h-mid, .h-right{ text-align:right; }
-.h-name{ min-width: 0; }
+.h-mid, .h-right{
+  text-align:right;
+  white-space: nowrap;
+}
+.h-name{
+  min-width: 0;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
 
 /* 列表 */
 .fav-list{
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 6px 6px;
+  padding: 2px 0 4px;
 }
 
 /* 行 */
 .row{
   display:grid;
-  grid-template-columns: 1fr 56px 66px;
+  grid-template-columns: 1fr 1fr 1fr;
+  column-gap: 4px;
   align-items:center;
-  padding: 8px 6px;
-  border-radius: 6px;
+  padding: 9px 8px;
+  border-radius: 0;
   cursor: pointer;
   transition: .12s ease;
+  box-sizing: border-box;
 }
-.row:hover{ background: rgba(47,128,237,.06); }
+.row:hover{ background: rgba(47,128,237,.05); }
 .row.active{
-  background: rgba(47,128,237,.10);
-  outline: 1px solid rgba(47,128,237,.16);
+  background: rgba(47,128,237,.08);
+  outline: none;
 }
 
 /* 名称 */
@@ -533,30 +544,35 @@ const fmtMoneySigned = (v) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.1;
+  line-height: 1.2;
+  min-width: 4em;
 }
 .name-sub{
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 10px;
-  color: #98a2b3;
+  color: #8c97ab;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* 数字 */
+.cell.name{
+  min-width: 0;
+}
 .cell.mid, .cell.right{ text-align:right; }
 .num{
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 3px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .arrow{
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   opacity: .95;
 }

@@ -1,4 +1,4 @@
-const toNullableNumber = (v) => {
+﻿const toNullableNumber = (v) => {
   if (v == null || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
@@ -25,6 +25,15 @@ export const STOCK_FIELD_OPTIONS = [
   { key: 'close', label: '收盘价' },
   { key: 'high', label: '最高价' },
   { key: 'low', label: '最低价' },
+  { key: 'ma5', label: 'MA5' },
+  { key: 'ma10', label: 'MA10' },
+  { key: 'ma20', label: 'MA20' },
+  { key: 'ma60', label: 'MA60' },
+  { key: 'rsi14', label: 'RSI14' },
+  { key: 'atr14Pct', label: 'ATR14' },
+  { key: 'volatility20d', label: '20日波动率' },
+  { key: 'drawdown20d', label: '20日回撤' },
+  { key: 'relativeStrength20d', label: '20日相对强弱' },
   { key: 'changePercent', label: '涨跌幅' },
   { key: 'changeAmount', label: '涨跌额' },
   { key: 'volume', label: '成交量' },
@@ -44,7 +53,6 @@ export const STOCK_FIELD_OPTIONS = [
   { key: 'limitUp', label: '涨停标记' },
   { key: 'limitDown', label: '跌停标记' }
 ]
-
 const STOCK_FIELD_SET = new Set(STOCK_FIELD_OPTIONS.map(x => x.key))
 const STOCK_FIELD_LABEL_MAP = Object.fromEntries(STOCK_FIELD_OPTIONS.map(x => [x.key, x.label]))
 
@@ -53,6 +61,15 @@ export const TRADE_CONDITION_FIELD_OPTIONS = [
   { key: 'changeAmount', label: '涨跌额', unit: '' },
   { key: 'price', label: '最新价', unit: '' },
   { key: 'close', label: '收盘价', unit: '' },
+  { key: 'ma5', label: 'MA5', unit: '' },
+  { key: 'ma10', label: 'MA10', unit: '' },
+  { key: 'ma20', label: 'MA20', unit: '' },
+  { key: 'ma60', label: 'MA60', unit: '' },
+  { key: 'rsi14', label: 'RSI14', unit: '' },
+  { key: 'atr14Pct', label: 'ATR14', unit: '%' },
+  { key: 'volatility20d', label: '20日波动率', unit: '%' },
+  { key: 'drawdown20d', label: '20日回撤', unit: '%' },
+  { key: 'relativeStrength20d', label: '20日相对强弱', unit: '%' },
   { key: 'volume', label: '成交量', unit: '' },
   { key: 'amount', label: '成交额', unit: '' },
   { key: 'turnover', label: '换手率', unit: '%' },
@@ -63,7 +80,6 @@ export const TRADE_CONDITION_FIELD_OPTIONS = [
   { key: 'orderImbalance', label: '委比', unit: '' },
   { key: 'mktCap', label: '总市值', unit: '' }
 ]
-
 const TRADE_CONDITION_FIELD_SET = new Set(TRADE_CONDITION_FIELD_OPTIONS.map(x => x.key))
 const FIELD_UNIT_MAP = Object.fromEntries(TRADE_CONDITION_FIELD_OPTIONS.map(x => [x.key, x.unit || '']))
 
@@ -86,8 +102,8 @@ const STRATEGY_TYPE_LABEL = {
 const PARAM_LABEL_MAP = {
   maFast: '快线窗口',
   maSlow: '慢线窗口',
-  takeProfitPct: '止盈比例(%)',
-  stopLossPct: '止损比例(%)',
+  takeProfitPct: '止盈比例',
+  stopLossPct: '止损比例',
   volumeRatioThreshold: '量比阈值',
   netInflowYiThreshold: '净流入阈值'
 }
@@ -117,7 +133,7 @@ const normalizeConditionList = (arr = []) => {
 }
 
 const conditionToHumanText = (cond = {}) => {
-  const fieldLabel = STOCK_FIELD_LABEL_MAP[cond.field] || cond.field || '字段'
+  const fieldLabel = STOCK_FIELD_LABEL_MAP[cond.field] || cond.field || '瀛楁'
   const opLabel = OP_LABEL_MAP[cond.op] || cond.op || '>='
   const unit = FIELD_UNIT_MAP[cond.field] || ''
   const value = cond.value == null ? '--' : cond.value
@@ -156,7 +172,7 @@ export const createDefaultTradeSnapshot = () => ({
   },
   dataBinding: {
     source: 'stockStore.quotesByCode',
-    fields: ['close', 'volume', 'amount', 'changePercent', 'volumeRatio', 'netInflow', 'mktCap']
+    fields: ['close', 'ma20', 'ma60', 'rsi14', 'atr14Pct', 'volatility20d', 'relativeStrength20d', 'volume', 'amount', 'changePercent', 'volumeRatio', 'netInflow', 'mktCap']
   },
   entry: {
     expression: '',
@@ -355,18 +371,18 @@ export const getTradeDisplayLines = (snapshot) => {
     .slice(0, 8)
 
   const paramEntries = Object.entries(s.params || {})
-    .map(([k, p]) => `${PARAM_LABEL_MAP[k] || k}：默认${p?.value ?? '--'}，范围[${p?.min ?? '--'}, ${p?.max ?? '--'}]`)
+    .map(([k, p]) => `${PARAM_LABEL_MAP[k] || k}: 默认${p?.value ?? '--'}，范围[${p?.min ?? '--'}, ${p?.max ?? '--'}]`)
     .slice(0, 6)
 
   return [
-    `买入条件：${conditionListToHuman(s.entry.conditions) || '未设置'}（${s.entry.triggerMode === 'intraday' ? '盘中触发' : '收盘触发'}）`,
-    `卖出条件：${conditionListToHuman(s.exit.conditions) || '未设置'}`,
-    `止盈止损：止盈${s.exit.takeProfitPct ?? '--'}% / 止损${s.exit.stopLossPct ?? '--'}% / 退出信号：${s.exit.exitSignal || '未设置'}`,
-    `仓位管理：初始${s.position.initialValue ?? '--'}% / 上限${s.position.maxPositionPct ?? '--'}% / 加仓${s.position.addPositionMaxPct ?? '--'}%`,
-    `风控约束：最大回撤${s.risk.maxDrawdownPct ?? '--'}% / 单笔亏损${s.risk.maxSingleLossPct ?? '--'}% / 日内${s.risk.maxTradesPerDay ?? '--'}次`,
-    `参数设置：${paramEntries.join('；') || '未设置'}`,
-    `数据绑定：${fieldLabels.join('、') || '默认字段'}`,
-    `策略类型：${STRATEGY_TYPE_LABEL[s.metadata.strategyType] || s.metadata.strategyType}/${s.metadata.marketScope}/${s.metadata.instrumentType}/${s.metadata.timeframe}`
+    `买入条件: ${conditionListToHuman(s.entry.conditions) || '未设置'}（${s.entry.triggerMode === 'intraday' ? '盘中触发' : '收盘触发'}）`,
+    `卖出条件: ${conditionListToHuman(s.exit.conditions) || '未设置'}`,
+    `止盈止损: 止盈${s.exit.takeProfitPct ?? '--'}% / 止损${s.exit.stopLossPct ?? '--'}% / 退出信号: ${s.exit.exitSignal || '未设置'}`,
+    `仓位管理: 初始${s.position.initialValue ?? '--'}% / 上限${s.position.maxPositionPct ?? '--'}% / 加仓${s.position.addPositionMaxPct ?? '--'}%`,
+    `风控约束: 最大回撤${s.risk.maxDrawdownPct ?? '--'}% / 单笔亏损${s.risk.maxSingleLossPct ?? '--'}% / 日内${s.risk.maxTradesPerDay ?? '--'}次`,
+    `参数设置: ${paramEntries.join('；') || '未设置'}`,
+    `数据绑定: ${fieldLabels.join('、') || '默认字段'}`,
+    `策略类型: ${STRATEGY_TYPE_LABEL[s.metadata.strategyType] || s.metadata.strategyType}/${s.metadata.marketScope}/${s.metadata.instrumentType}/${s.metadata.timeframe}`
   ]
 }
 
@@ -387,3 +403,4 @@ export const getTradeDisplayEntries = (snapshot) => {
     }
   ]
 }
+

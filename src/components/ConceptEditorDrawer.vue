@@ -1,10 +1,10 @@
 <template>
   <!-- ============ 概念编辑抽屉 ============ -->
-  <el-drawer
+  <component
+    :is="containerTag"
     v-model="visible"
     :title="drawerTitle"
-    size="45%"
-    append-to-body
+    v-bind="containerProps"
     class="drawer concept-drawer"
   >
     <div class="drawer-body">
@@ -117,23 +117,23 @@
               />
 
               <!-- 下面这些列会在右侧横向滚动 -->
-              <el-table-column label="开盘" width="80" align="right">
+              <el-table-column label="开盘" width="78" align="right">
                 <template #default="{ row }">{{ fmtPrice(row.open) }}</template>
               </el-table-column>
 
-              <el-table-column label="收盘" width="80" align="right">
+              <el-table-column label="收盘" width="78" align="right">
                 <template #default="{ row }">{{ fmtPrice(row.close) }}</template>
               </el-table-column>
 
-              <el-table-column label="最高" width="80" align="right">
+              <el-table-column label="最高" width="78" align="right">
                 <template #default="{ row }">{{ fmtPrice(row.high) }}</template>
               </el-table-column>
 
-              <el-table-column label="最低" width="80" align="right">
+              <el-table-column label="最低" width="78" align="right">
                 <template #default="{ row }">{{ fmtPrice(row.low) }}</template>
               </el-table-column>
 
-              <el-table-column label="成交量" width="110" align="right">
+              <el-table-column label="成交量" width="105" align="right">
                 <template #default="{ row }">{{ fmtInt(row.vol) }}</template>
               </el-table-column>
 
@@ -168,7 +168,7 @@
         <el-button type="primary" class="btn-save" @click="save">保存</el-button>
       </div>
     </template>
-  </el-drawer>
+  </component>
 </template>
 
 <script setup>
@@ -180,7 +180,14 @@ const stockStore = useStockStore()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  editing: { type: Object, default: null } // {id,name,description,algorithm,stockCodes:[]}
+  editing: { type: Object, default: null }, // {id,name,description,algorithm,stockCodes:[]}
+  mode: { type: String, default: 'drawer' }, // 'drawer' | 'dialog'
+  drawerSize: { type: String, default: '45%' },
+  dialogWidth: { type: String, default: '780px' },
+  appendToBody: { type: Boolean, default: true },
+  modal: { type: Boolean, default: true },
+  modalAppendToBody: { type: Boolean, default: true },
+  lockScroll: { type: Boolean, default: true }
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 
@@ -192,6 +199,29 @@ const visible = computed({
 const isEditing = computed(() => !!props.editing?.id)
 const drawerTitle = computed(() => (isEditing.value ? '编辑概念' : '新建概念'))
 const nameRules = [{ required: true, message: '请输入概念名称', trigger: 'blur' }]
+const isDialogMode = computed(() => props.mode === 'dialog')
+const containerTag = computed(() => (isDialogMode.value ? 'el-dialog' : 'el-drawer'))
+const containerProps = computed(() => {
+  if (isDialogMode.value) {
+    return {
+      width: props.dialogWidth,
+      top: '4vh',
+      appendToBody: props.appendToBody,
+      modal: props.modal,
+      modalAppendToBody: props.modalAppendToBody,
+      lockScroll: props.lockScroll,
+      closeOnClickModal: false,
+      destroyOnClose: true
+    }
+  }
+  return {
+    size: props.drawerSize,
+    appendToBody: props.appendToBody,
+    modal: props.modal,
+    modalAppendToBody: props.modalAppendToBody,
+    lockScroll: props.lockScroll
+  }
+})
 
 /** ✅ 统一 code */
 function normalizeCode(raw) {
@@ -430,7 +460,8 @@ const save = () => {
   border-radius: 12px;
   padding: 8px 10px;
   overflow: auto;
-  max-height: 100px;
+  min-height: 70px;
+  max-height: 70px;
 }
 .picked-box.empty{
   display:flex;
