@@ -402,8 +402,8 @@ const fmtMoneySigned = (v) => {
   height: 40px;
   padding: 0 10px;
   border-radius: 6px;
-  background: #fafbfc;
-  border: 1px solid rgba(0,0,0,.06);
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.13);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -411,7 +411,7 @@ const fmtMoneySigned = (v) => {
   transition: .12s ease;
 }
 .quick-item:hover{
-  background: #f2f6ff;
+  background: #ffffff;
   border-color: rgba(64,158,255,.18);
 }
 .quick-item.active{
@@ -430,9 +430,13 @@ const fmtMoneySigned = (v) => {
 
 /* ✅ 自选区：外层不滚动，给内部列表滚动空间 */
 .fav-wrap{
+  --concept-card-height: 360px;
+  --stock-card-height: 360px;
   padding: 4px 8px 0;
   display: grid;
-  gap: 6px;
+  grid-template-rows: var(--concept-card-height) var(--stock-card-height);
+  gap: 10px;
+  align-content: start;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -442,9 +446,9 @@ const fmtMoneySigned = (v) => {
 /* 卡片 */
 .fav-card{
   background: #fff;
-  border: 1px solid rgba(0,0,0,.06);
+  border: 1px solid #d8e1ec;
   border-radius: 8px;
-  box-shadow: none;
+  box-shadow: 0 1px 0 rgba(255,255,255,.88), 0 3px 8px rgba(15,23,42,.04);
   overflow: hidden;
 
   display: flex;
@@ -459,8 +463,8 @@ const fmtMoneySigned = (v) => {
   display:flex;
   align-items:center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(0,0,0,.06);
-  background: #f8fafd;
+  border-bottom: 1px solid #dfe7f1;
+  background: #ffffff;
   flex-shrink: 0;
 }
 .fav-title{
@@ -486,8 +490,8 @@ const fmtMoneySigned = (v) => {
 
 /* 表头 */
 .fav-table-head{
-  height: 38px;
-  padding: 0 8px;
+  height: 27px;
+  padding: 0 11px;
   display:grid;
   grid-template-columns: 1fr 1fr 1fr;
   column-gap: 4px;
@@ -495,8 +499,8 @@ const fmtMoneySigned = (v) => {
   color:#7f8ba2;
   font-size: 12px;
   font-weight: 800;
-  background: #f4f6fa;
-  border-bottom: 1px solid rgba(0,0,0,.04);
+  background: #f2f6fb;
+  border-bottom: 1px solid #e2e9f3;
   flex-shrink: 0;
   box-sizing: border-box;
 }
@@ -515,7 +519,7 @@ const fmtMoneySigned = (v) => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 0 4px;
+  padding: 2px 2px 4px;
 }
 
 /* 行 */
@@ -529,6 +533,9 @@ const fmtMoneySigned = (v) => {
   cursor: pointer;
   transition: .12s ease;
   box-sizing: border-box;
+}
+.row + .row{
+  border-top: 1px solid #e9eff7;
 }
 .row:hover{ background: rgba(47,128,237,.05); }
 .row.active{

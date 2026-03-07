@@ -35,7 +35,13 @@
         <div class="sub-line">
           <span class="sub-item">
             所属概念：
-            <span class="sub-strong">{{ conceptName }}</span>
+            <span
+              class="sub-strong concept-link"
+              :class="{ disabled: !conceptId }"
+              @click="goBackConcept"
+            >
+              {{ conceptName }}
+            </span>
           </span>
           <span class="sub-item">
             行业：
@@ -51,15 +57,6 @@
           </div>
 
           <div class="ov-item">
-            <span class="ov-k">涨跌幅</span>
-            <span class="ov-v" :class="chgClass(stockSafe.change)">
-              <span v-if="Number(stockSafe.change) > 0" class="arrow">↑</span>
-              <span v-else-if="Number(stockSafe.change) < 0" class="arrow">↓</span>
-              {{ formatPct(stockSafe.change) }}
-            </span>
-          </div>
-
-          <div class="ov-item">
             <span class="ov-k">净流入</span>
             <span class="ov-v bold" :class="moneyClass(stockSafe.netInflow)">
               {{ formatMoney(stockSafe.netInflow) }}
@@ -71,11 +68,6 @@
             <span class="ov-v bold" :class="moneyClass(stockSafe.mainInflow)">
               {{ formatMoney(stockSafe.mainInflow) }}
             </span>
-          </div>
-
-          <div class="ov-item">
-            <span class="ov-k">成交额</span>
-            <span class="ov-v">{{ formatMoney(stockSafe.amount) }}</span>
           </div>
 
           <div class="ov-item">
@@ -105,11 +97,6 @@
         </div>
       </div>
 
-      <div class="head-right">
-        <div class="quick-actions">
-          <el-button size="small" @click="goBackConcept" :disabled="!conceptId">⬅返回概念</el-button>
-        </div>
-      </div>
     </div>
 
     <!-- ✅ 核心指标：保持你原来的 9 宫格 -->
@@ -226,6 +213,16 @@ const formatMoney = (v) => {
   if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
   return `${sign}${abs.toFixed(0)}`
 }
+const formatToYi = (v, d = 2) => {
+  const n = Number(v)
+  if (Number.isNaN(n)) return '--'
+  return `${n > 0 ? '+' : n < 0 ? '-' : ''}${Math.abs(n / 1e8).toFixed(d)}`
+}
+const formatToWanInt = (v) => {
+  const n = Number(v)
+  if (Number.isNaN(n)) return '--'
+  return Math.round(n / 1e4).toLocaleString()
+}
 const chgClass = (v) => ({ up: Number(v) > 0, down: Number(v) < 0 })
 const moneyClass = (v) => ({ up: Number(v) > 0, down: Number(v) < 0 })
 
@@ -248,15 +245,15 @@ const detailList = computed(() => {
     { label: '收盘价', value: close, style: 'primary' },
     { label: '最高价', value: high, style: 'neutral' },
     { label: '最低价', value: low, style: 'neutral' },
-    { label: '昨收', value: preClose, style: 'neutral' },
+    { label: '昨收价', value: preClose, style: 'neutral' },
     {
       label: '涨跌额',
       value: Number.isNaN(Number(chg)) ? '--' : `${Number(chg) > 0 ? '+' : ''}${Number(chg).toFixed(2)}`,
       style: Number(chg) >= 0 ? 'danger' : 'success'
     },
     { label: '涨跌幅', value: formatPct(chgPct), style: Number(chgPct) >= 0 ? 'danger' : 'success' },
-    { label: '成交量', value: typeof vol === 'number' ? vol.toLocaleString() : vol, style: 'neutral' },
-    { label: '成交额', value: formatMoney(amount), style: 'neutral' }
+    { label: '成交量(万)', value: formatToWanInt(vol), style: 'neutral' },
+    { label: '成交额(亿)', value: formatToYi(amount), style: 'neutral' }
   ]
 })
 
@@ -406,6 +403,18 @@ onBeforeUnmount(() => {
 .sub-line { margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; color: #6b7280; font-size: 12px; }
 .sub-item { display: inline-flex; align-items: center; gap: 6px; }
 .sub-strong { font-weight: 800; color: #111827; }
+.concept-link{
+  cursor: pointer;
+  color: #2f80ed;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.concept-link.disabled{
+  cursor: default;
+  color: #9ca3af;
+  text-decoration: none;
+}
 
 .fav-btn { padding: 0 !important; }
 .fav-icon { font-size: 18px; color: #c0c4cc; transition: transform .15s ease, color .15s ease; }
@@ -431,14 +440,14 @@ onBeforeUnmount(() => {
 .up { color: #f56c6c; }
 .down { color: #67c23a; }
 
-.metric-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 18px; margin: 16px 0 20px; }
-.metric-card { padding: 18px; border-radius: 14px; text-align: center; }
-.metric-label { font-size: 12px; opacity: 0.85; }
-.metric-value { margin-top: 8px; font-size: 22px; font-weight: 800; }
-.metric-card.primary { background: linear-gradient(135deg, #6c7ae0, #7f60c5); color: #fff; }
-.metric-card.danger { background: linear-gradient(135deg, #ff7a7a, #ff4d79); color: #fff; }
-.metric-card.success { background: linear-gradient(135deg, #67c23a, #3fa36c); color: #fff; }
-.metric-card.neutral { background: #e9edf3; }
+.metric-grid{ display:grid; grid-template-columns: repeat(9, 1fr); gap:18px; margin-bottom:28px; }
+.metric-card{ padding:18px; border-radius:14px; text-align:center; }
+.metric-label{ font-size:12px; opacity:.85; }
+.metric-value{ margin-top:8px; font-size:22px; font-weight:700; }
+.metric-card.primary{ background: linear-gradient(135deg, #6c7ae0, #7f60c5); color:#fff; }
+.metric-card.danger{ background: linear-gradient(135deg, #ff7a7a, #ff4d79); color:#fff; }
+.metric-card.success{ background: linear-gradient(135deg, #67c23a, #3fa36c); color:#fff; }
+.metric-card.neutral{ background:#e9edf3; }
 
 .panel-row { display: grid; grid-template-columns: 1.2fr 2.8fr; gap: 20px; }
 .panel-card { background: #fff; border-radius: 14px; padding: 18px 18px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.06); }

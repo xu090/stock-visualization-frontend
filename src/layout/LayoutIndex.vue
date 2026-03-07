@@ -109,6 +109,7 @@ export default {
   overflow: hidden;
   display: grid;
   grid-template-columns: 236px 1fr 236px;
+  background: #f4f7fb;
 }
 
 .layout-aside{
@@ -118,10 +119,12 @@ export default {
   background: #f7f9fc;
 }
 .layout-aside-left{
-  border-right: 1px solid #e6ebf2;
+  border-right: 1px solid #cfd8e5;
+  box-shadow: inset -1px 0 0 rgba(255,255,255,.85);
 }
 .layout-aside-right{
-  border-left: 1px solid #e6ebf2;
+  border-left: 1px solid #cfd8e5;
+  box-shadow: inset 1px 0 0 rgba(255,255,255,.85);
 }
 
 .aside-inner{
@@ -138,11 +141,14 @@ export default {
 }
 
 .right-inner{
+  --right-strategy-height: 560px;
+  --right-plan-height: 250px;
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(260px, 60%) minmax(180px, 40%);
-  gap: 10px;
+  grid-template-rows: var(--right-strategy-height) var(--right-plan-height);
+  align-content: start;
+  gap: 12px;
   padding: 10px 10px 10px 8px;
 }
 .right-strategy,
@@ -151,6 +157,10 @@ export default {
   overflow: hidden;
   display: flex;
   justify-content: center;
+}
+.right-plan{
+  padding-top: 10px;
+  border-top: 1px solid #cfd8e5;
 }
 
 .layout-main{

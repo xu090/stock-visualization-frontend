@@ -6,11 +6,9 @@
         <span class="strategy-title">策略中心</span>
 
         <div class="h-top-actions" id="tour-strategy-save">
-          <el-tooltip content="查看全部策略" placement="top" effect="dark">
-            <el-button class="btn-icon" size="small" plain @click="allDialogVisible = true">
-              <el-icon><Grid /></el-icon>
-            </el-button>
-          </el-tooltip>
+          <el-button size="small" plain type="success" @click="allDialogVisible = true">
+            全部策略
+          </el-button>
         </div>
       </div>
 
@@ -449,7 +447,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Star, StarFilled, Grid } from '@element-plus/icons-vue'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useStockStore } from '@/stores/stock'
@@ -1054,7 +1052,7 @@ const buildFilterParts = (f) => {
 <style scoped>
 .strategy-dock{
   width: 212px;
-  height: 333px;
+  height: 100%;
   overflow: hidden;
   background: transparent;
   padding: 8px;
@@ -1150,6 +1148,13 @@ const buildFilterParts = (f) => {
   padding: 0 !important;
   border-radius: 10px !important;
   font-size: 14px;
+}
+.btn-all-strategy{
+  height: 28px !important;
+  padding: 0 10px !important;
+  border-radius: 10px !important;
+  font-weight: 800;
+  font-size: 12px;
 }
 .btn-clear{ padding: 0 6px !important; }
 
