@@ -1,5 +1,6 @@
 <template>
   <div class="concept-management">
+    <ConceptMacroCharts />
     <div class="topbar" id="tour-topbar">
 
       <!-- 搜索面板 -->
@@ -399,6 +400,7 @@ import Draggable from 'vuedraggable'
 
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 import SaveStrategyDialog from '@/components/SaveStrategyDialog.vue'
+import ConceptMacroCharts from '@/components/ConceptMacroCharts.vue'
 
 import { useConceptStore } from '@/stores/concept'
 import { useStrategyStore } from '@/stores/strategy'
