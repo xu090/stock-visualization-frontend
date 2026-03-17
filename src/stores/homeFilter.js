@@ -19,6 +19,8 @@ export const useHomeFilterStore = defineStore('homeFilter', {
     scope: 'all', // 预留：all | fav
     searchQuery: '',
     selectedMetrics: ['change'],
+    appliedSelectStrategyId: null,
+    appliedTradeStrategyId: null,
 
     // ✅ 专业化：可组合筛选阈值
     filters: {
@@ -39,6 +41,8 @@ export const useHomeFilterStore = defineStore('homeFilter', {
       this.scope = 'all'
       this.searchQuery = ''
       this.selectedMetrics = ['change']
+      this.appliedSelectStrategyId = null
+      this.appliedTradeStrategyId = null
       this.filters = {
         minChange: null,
         minNetInflowY: null,

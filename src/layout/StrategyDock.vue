@@ -450,8 +450,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
-import { useStockStore } from '@/stores/stock'
-import { useInvestmentPlanStore } from '@/stores/investmentPlan'
 import {
   createDefaultTradeSnapshot,
   normalizeTradeSnapshot
@@ -464,8 +462,6 @@ import TradeConditionEditor from '@/components/strategy/TradeConditionEditor.vue
 
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
-const stockStore = useStockStore()
-const investmentPlanStore = useInvestmentPlanStore()
 const router = useRouter()
 
 /** 指标定义 */
@@ -568,20 +564,7 @@ const applyStrategy = (type, s) => {
     currentAppliedSelectId.value = s.id
   } else {
     currentAppliedTradeId.value = s.id
-    const favoriteCodes = (stockStore.myStockCodes || []).filter(Boolean)
-    if (!favoriteCodes.length) {
-      investmentPlanStore.clear()
-      ElMessage.warning('当前没有自选股票，无法生成投资方案')
-      return
-    }
-    stockStore.initMockQuotes?.(favoriteCodes)
-    const rows = investmentPlanStore.generateFromTradeStrategy({
-      strategy: s,
-      stockStore
-    })
-    const buyCount = rows.filter(x => x.action === 'buy').length
-    const sellCount = rows.filter(x => x.action === 'sell').length
-    ElMessage.success(`已应用：${s.name}；生成方案 ${rows.length} 条（买入 ${buyCount} / 卖出 ${sellCount}）`)
+    ElMessage.success(`已应用：${s.name}。可在“投资方案”中按股票生成和调整方案`)
     return
   }
   ElMessage.success(`已应用：${s.name}`)
@@ -607,7 +590,6 @@ const toggleApply = async (type, s) => {
 
   if (type === 'trade' && s.id === currentAppliedTradeId.value) {
     currentAppliedTradeId.value = null
-    investmentPlanStore.clear()
     ElMessage.success('已取消交易策略应用')
     await ensureHomePage()
     return
@@ -624,7 +606,6 @@ const clearApplied = (type) => {
     ElMessage.success('已清空选股策略')
   } else {
     currentAppliedTradeId.value = null
-    investmentPlanStore.clear()
     ElMessage.success('已清空交易策略')
   }
 }

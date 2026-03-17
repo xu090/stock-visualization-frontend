@@ -77,6 +77,7 @@
             <el-icon class="fav-ic"><Tickets /></el-icon>
             <span>股票自选</span>
           </div>
+          
          </div>
 
         <div class="fav-table-head">
@@ -91,7 +92,11 @@
             v-for="s in myStockEnriched"
             :key="s.code"
             class="row"
-            :class="{ active: isStockRouteActive(s.code) }"
+            :class="{
+              active: isStockRouteActive(s.code),
+              'signal-buy': s.tradeAction === 'buy',
+              'signal-sell': s.tradeAction === 'sell'
+            }"
             @click="goStock(s.code)"
           >
             <div class="cell name">
@@ -99,6 +104,14 @@
                 <div class="name-main">{{ shortDisplayName(s.name) }}</div>
               </el-tooltip>
               <div class="name-sub">{{ s.code }}</div>
+              <div
+                v-if="appliedTradeStrategy"
+                class="trade-signal"
+                :class="`sig-${s.tradeAction || 'hold'}`"
+                :title="s.tradeReason || ''"
+              >
+                {{ tradeSignalText(s.tradeAction) }} {{ Number.isFinite(s.tradeScore) ? `(${s.tradeScore})` : '' }}
+              </div>
             </div>
 
             <div class="cell mid">
@@ -126,17 +139,28 @@
   </div>
 </template>
 
+<script>
+export default {
+  name: 'LeftSidebar'
+}
+</script>
+
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
-import { DataAnalysis, Star, Tickets, Document, ArrowRight } from '@element-plus/icons-vue'
+import { useStrategyStore } from '@/stores/strategy'
+import { useHomeFilterStore } from '@/stores/homeFilter'
+import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
+import { HomeFilled, Tickets } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
+const strategyStore = useStrategyStore()
+const homeFilter = useHomeFilterStore()
 
 /**
  * ✅ 顶部 tab：默认 concept
@@ -225,33 +249,76 @@ const myStocksOldSafe = computed(() => {
   return Array.isArray(list) ? list : []
 })
 
+const currentAppliedTradeId = computed(() => homeFilter.appliedTradeStrategyId || null)
+const appliedTradeStrategy = computed(() => {
+  const id = currentAppliedTradeId.value
+  if (!id) return null
+  return (strategyStore.tradeStrategies || []).find(s => s.id === id) || null
+})
+
 const myStockEnriched = computed(() => {
+  const applied = appliedTradeStrategy.value
+  const actionRank = { buy: 0, hold: 1, sell: 2 }
+
   if (myStockCodesSafe.value.length) {
-    return myStockCodesSafe.value
+    const rows = myStockCodesSafe.value
       .map(code => {
         const c = normalizeCode(code)
         const base = stockStore?.getStockBaseByCode?.(c)
         const q = stockStore?.getStockByCodeEnriched?.(c)
+        const result = applied?.snapshot
+          ? evaluateTradeStrategyForQuote(applied.snapshot, q || {})
+          : null
         return {
           code: c,
           name: base?.name || q?.name || c,
           change: Number(q?.change ?? q?.changePercent ?? 0),
-          changeAmount: Number(q?.changeAmount ?? 0)
+          changeAmount: Number(q?.changeAmount ?? 0),
+          tradeAction: result?.action || null,
+          tradeScore: Number.isFinite(Number(result?.score)) ? Number(result?.score) : null,
+          tradeReason: Array.isArray(result?.reason) ? result.reason.join('；') : (result?.reason || '')
         }
       })
       .filter(Boolean)
+    if (!applied?.snapshot) return rows
+    return rows.slice().sort((a, b) => {
+      const ar = actionRank[a.tradeAction] ?? 9
+      const br = actionRank[b.tradeAction] ?? 9
+      if (ar !== br) return ar - br
+      return (b.tradeScore ?? -1) - (a.tradeScore ?? -1)
+    })
   }
 
-  return myStocksOldSafe.value.map(s => {
+  const rows = myStocksOldSafe.value.map(s => {
     const c = normalizeCode(s.code)
+    const q = stockStore?.getStockByCodeEnriched?.(c)
+    const result = applied?.snapshot
+      ? evaluateTradeStrategyForQuote(applied.snapshot, q || {})
+      : null
     return {
       code: c,
       name: s.name || c,
       change: Number(s.change ?? 0),
-      changeAmount: Number(s.changeAmount ?? 0)
+      changeAmount: Number(s.changeAmount ?? 0),
+      tradeAction: result?.action || null,
+      tradeScore: Number.isFinite(Number(result?.score)) ? Number(result?.score) : null,
+      tradeReason: Array.isArray(result?.reason) ? result.reason.join('；') : (result?.reason || '')
     }
   })
+  if (!applied?.snapshot) return rows
+  return rows.slice().sort((a, b) => {
+    const ar = actionRank[a.tradeAction] ?? 9
+    const br = actionRank[b.tradeAction] ?? 9
+    if (ar !== br) return ar - br
+    return (b.tradeScore ?? -1) - (a.tradeScore ?? -1)
+  })
 })
+
+const tradeSignalText = (action) => {
+  if (action === 'buy') return '买入信号'
+  if (action === 'sell') return '卖出信号'
+  return '观望'
+}
 
 /** 总览按钮状态 */
 const isActiveTop = computed(() => {
@@ -542,6 +609,12 @@ const fmtMoneySigned = (v) => {
   background: rgba(47,128,237,.08);
   outline: none;
 }
+.row.signal-buy{
+  background: rgba(245,108,108,.06);
+}
+.row.signal-sell{
+  background: rgba(103,194,58,.06);
+}
 
 /* 名称 */
 .name-main{
@@ -562,6 +635,15 @@ const fmtMoneySigned = (v) => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.trade-signal{
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.trade-signal.sig-buy{ color: #f56c6c; }
+.trade-signal.sig-sell{ color: #67c23a; }
+.trade-signal.sig-hold{ color: #909399; }
 
 /* 数字 */
 .cell.name{
@@ -594,6 +676,16 @@ const fmtMoneySigned = (v) => {
   text-align: center;
   color: #b0b4bb;
   font-size: 12px;
+}
+
+.strategy-hint{
+  font-size: 11px;
+  font-weight: 800;
+  color: #409eff;
+  background: rgba(64,158,255,.08);
+  border: 1px solid rgba(64,158,255,.25);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .pad{ height: 10px; flex-shrink: 0; }

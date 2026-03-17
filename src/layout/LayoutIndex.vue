@@ -141,13 +141,10 @@ export default {
 }
 
 .right-inner{
-  --right-strategy-height: 560px;
-  --right-plan-height: 250px;
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: var(--right-strategy-height) var(--right-plan-height);
-  align-content: start;
+  grid-template-rows: minmax(0, 1.3fr) minmax(0, 1.2fr);
   gap: 12px;
   padding: 10px 10px 10px 8px;
 }
@@ -156,7 +153,7 @@ export default {
   min-height: 0;
   overflow: hidden;
   display: flex;
-  justify-content: center;
+  justify-content: stretch;
 }
 .right-plan{
   padding-top: 10px;
