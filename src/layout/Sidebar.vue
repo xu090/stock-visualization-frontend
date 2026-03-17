@@ -23,8 +23,8 @@
         <div class="fav-head">
           <div class="fav-title">
             <el-tabs v-model="activeTopTab" class="top-tabs" stretch>
-              <el-tab-pane label="概念自选" name="concept" />
-              <el-tab-pane label="行业自选" name="industry" />
+              <el-tab-pane label="自选概念" name="concept" />
+              <el-tab-pane label="自选行业" name="industry" />
             </el-tabs>
           </div>
         </div>
@@ -33,6 +33,7 @@
           <span class="h-name">{{ activeTopTab === 'industry' ? '行业名称' : '概念名称' }}</span>
           <span class="h-mid">涨跌幅</span>
           <span class="h-right">净流入</span>
+          <span class="h-op">操作</span>
         </div>
 
         <!-- ✅ 内部滚动 -->
@@ -62,6 +63,18 @@
                 {{ fmtMoneySigned(c.netInflow) }}
               </span>
             </div>
+            <div class="cell op">
+              <el-tooltip content="取消收藏" placement="top" effect="dark">
+                <el-button link class="op-icon-btn op-icon-btn--cancel" @click.stop="unfavoriteConcept(c)">
+                  <el-icon class="icon-fav"><StarFilled /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-if="c.editable" content="编辑概念" placement="top" effect="dark">
+                <el-button link class="op-icon-btn op-icon-btn--edit" @click.stop="editConceptFromSidebar(c)">
+                  <el-icon class="icon-edit"><EditPen /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </div>
 
           <div v-if="myConceptsEnriched.length === 0" class="empty">
@@ -70,12 +83,12 @@
         </div>
       </section>
 
-      <!-- 股票自选 -->
+      <!-- 自选股票 -->
       <section class="fav-card" id="tour-fav-stock">
         <div class="fav-head">
           <div class="fav-title">
             <el-icon class="fav-ic"><Tickets /></el-icon>
-            <span>股票自选</span>
+            <span class="stock-title-text">自选股票</span>
           </div>
           
          </div>
@@ -84,6 +97,7 @@
           <span class="h-name">股票</span>
           <span class="h-mid">涨跌幅</span>
           <span class="h-right">涨跌额</span>
+          <span class="h-op">操作</span>
         </div>
 
         <!-- ✅ 内部滚动 -->
@@ -103,8 +117,8 @@
               <el-tooltip :content="s.name" placement="top" effect="dark">
                 <div class="name-main">{{ shortDisplayName(s.name) }}</div>
               </el-tooltip>
-              <div class="name-sub">{{ s.code }}</div>
-              <div
+              <div class="name-sub">{{ s.code || '--' }}</div>
+             <div
                 v-if="appliedTradeStrategy"
                 class="trade-signal"
                 :class="`sig-${s.tradeAction || 'hold'}`"
@@ -126,6 +140,13 @@
                 {{ fmtPriceSigned(s.changeAmount) }}
               </span>
             </div>
+            <div class="cell op">
+              <el-tooltip content="取消收藏" placement="top" effect="dark">
+                <el-button link class="op-icon-btn op-icon-btn--cancel" @click.stop="unfavoriteStock(s.code)">
+                  <el-icon class="icon-fav"><StarFilled /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </div>
 
           <div v-if="myStockEnriched.length === 0" class="empty">
@@ -136,6 +157,13 @@
     </div>
 
     <div class="pad" />
+
+    <ConceptEditorDrawer
+      v-model="conceptDrawerVisible"
+      :editing="editingConcept"
+      mode="dialog"
+      @saved="saveConceptEdit"
+    />
   </div>
 </template>
 
@@ -153,7 +181,9 @@ import { useStockStore } from '@/stores/stock'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
-import { HomeFilled, Tickets } from '@element-plus/icons-vue'
+import { HomeFilled, Tickets, EditPen, StarFilled } from '@element-plus/icons-vue'
+import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
+import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -199,7 +229,7 @@ watch(activeTopTab, (tab) => {
   }
 })
 
-/** ✅ 概念自选补齐指标：从 conceptOverviewAll 取 change/netInflow（含系统+自定义） */
+/** ✅ 自选概念补齐指标：从 conceptOverviewAll 取 change/netInflow（含系统+自定义） */
 const overviewMap = computed(() => {
   const map = Object.create(null)
   ;(conceptStore.conceptOverviewAll || []).forEach(c => { map[String(c.id)] = c })
@@ -224,19 +254,19 @@ const myConceptsEnriched = computed(() => {
   })
 })
 
-/** 股票自选：名称/代码 + 涨跌幅/涨跌额 */
-const shortDisplayName = (name) => {
-  const s = String(name ?? '')
-  if (s.length <= 4) return s
-  return `${s.slice(0, 2)}..${s.slice(-1)}`
-}
-
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
   s = s.replace(/\.(SZ|SH)$/i, '')
   s = s.replace(/^(sz|sh)/i, '')
   return s
+}
+
+/** 自选股票：名称/代码 + 涨跌幅/涨跌额 */
+const shortDisplayName = (name) => {
+  const s = String(name ?? '')
+  if (s.length <= 4) return s
+  return `${s.slice(0, 2)}..${s.slice(-1)}`
 }
 
 const myStockCodesSafe = computed(() => {
@@ -313,6 +343,48 @@ const myStockEnriched = computed(() => {
     return (b.tradeScore ?? -1) - (a.tradeScore ?? -1)
   })
 })
+
+const conceptDrawerVisible = ref(false)
+const editingConcept = ref(null)
+
+const unfavoriteConcept = (concept) => {
+  if (!concept?.id) return
+  conceptStore.removeConceptFromMyConcept?.(concept.id)
+}
+
+const unfavoriteStock = (code) => {
+  const c = normalizeCode(code)
+  if (!c) return
+  stockStore.removeStockFromMyStocks?.(c)
+}
+
+const editConceptFromSidebar = (concept) => {
+  if (!concept?.editable) return
+  editingConcept.value = {
+    id: String(concept.id),
+    name: concept.name || '',
+    description: concept.description || '',
+    stockCodes: Array.isArray(concept.stockCodes) ? concept.stockCodes : [],
+    algorithm: concept.algorithm || '',
+    editable: true,
+    favorite: !!concept.favorite
+  }
+  conceptDrawerVisible.value = true
+}
+
+const saveConceptEdit = (conceptData) => {
+  if (!editingConcept.value?.id) return
+  const prev = conceptStore.getConceptById?.(editingConcept.value.id)
+  conceptStore.updateUserConcept?.({
+    ...conceptData,
+    id: editingConcept.value.id,
+    editable: true,
+    favorite: prev?.favorite ?? true
+  })
+  conceptDrawerVisible.value = false
+  editingConcept.value = null
+  ElMessage.success('已更新概念')
+}
 
 const tradeSignalText = (action) => {
   if (action === 'buy') return '买入信号'
@@ -421,42 +493,45 @@ const fmtMoneySigned = (v) => {
 
 }
 
-.top-tabs .el-tabs__header {
-  display: flex;
-  justify-content: space-between;
-  padding: 0;
+.top-tabs{
+  width: 100%;
+  flex: 1 1 auto;
 }
-
-.top-tabs .el-tabs__header .el-tabs__item {
-  font-size: 13px; /* 增大字体 */
-  font-weight: bold;
-  color: #1f2d3d;
-  padding: 5px 10px;
-  border-radius: 6px;
-  margin: 0 5px;
-  cursor: pointer;
-}
-
-.top-tabs .el-tabs__header .el-tabs__item.is-active {
-  background-color: #eef4ff; /* 激活时背景色 */
-  color: #2f80ed; /* 激活时字体颜色 */
-  border-color: #2f80ed;
-}
-
-.top-tabs .el-tabs__header .el-tabs__item:hover {
-  background-color: #f2f6ff; /* 悬停背景色 */
-}
-
-.top-tabs .el-tabs__header .el-tabs__item.is-disabled {
-  background-color: #f5f5f5;
-  cursor: not-allowed;
-}.top-tabs :deep(.el-tabs__header){ 
-  margin: 0; 
-  margin-left: 10px; 
+.top-tabs :deep(.el-tabs__header){
+  margin: 0;
   width: 100%;
 }
-.top-tabs :deep(.el-tabs__nav-wrap::after){ 
-  height: 1px; 
+.top-tabs :deep(.el-tabs__nav-wrap){
+  padding: 0;
+}
+.top-tabs :deep(.el-tabs__nav){
+  display: flex;
+  width: 100%;
+}
+.top-tabs :deep(.el-tabs__item){
+  flex: 0 0 50%;
+  max-width: 50%;
+  justify-content: center;
+  text-align: center;
+  padding: 8px 4px 9px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2d3d;
+}
+.top-tabs :deep(.el-tabs__item.is-active){
+  color: #2f80ed;
+}
+.top-tabs :deep(.el-tabs__item:hover){
+  color: #2f80ed;
+}
+.top-tabs :deep(.el-tabs__active-bar){
+  height: 3px;
+  border-radius: 3px;
+  background-color: #409eff;
+}
+.top-tabs :deep(.el-tabs__nav-wrap::after){
+  height: 1px;
 }
 /* 快捷入口 */
 .quick{
@@ -537,12 +612,15 @@ const fmtMoneySigned = (v) => {
 .fav-title{
   display:flex;
   align-items:center;
-  gap: 8px;
+  gap: 0;
+  flex: 1 1 auto;
+  width: 100%;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   color: #1f2d3d;
 }
 .fav-ic{ color:#2f80ed; font-size: 16px; }
+.stock-title-text{ margin-left: 4px; }
 
 .fav-badge{
   min-width: 26px;
@@ -560,7 +638,7 @@ const fmtMoneySigned = (v) => {
   height: 27px;
   padding: 0 11px;
   display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) 95px 60px 46px;
   column-gap: 4px;
   align-items:center;
   color:#7f8ba2;
@@ -571,7 +649,7 @@ const fmtMoneySigned = (v) => {
   flex-shrink: 0;
   box-sizing: border-box;
 }
-.h-mid, .h-right{
+.h-mid, .h-right, .h-op{
   text-align:right;
   white-space: nowrap;
 }
@@ -592,10 +670,10 @@ const fmtMoneySigned = (v) => {
 /* 行 */
 .row{
   display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 112px 58px 46px;
+  column-gap: 6px;
   align-items:center;
-  padding: 9px 8px;
+  padding: 10px 10px;
   border-radius: 0;
   cursor: pointer;
   transition: .12s ease;
@@ -630,13 +708,17 @@ const fmtMoneySigned = (v) => {
 .name-sub{
   margin-top: 3px;
   font-size: 10px;
-  color: #8c97ab;
+  color: #6f7f99;
+  font-weight: 700;
+  letter-spacing: .2px;
+  line-height: 1.2;
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .trade-signal{
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
@@ -647,9 +729,55 @@ const fmtMoneySigned = (v) => {
 
 /* 数字 */
 .cell.name{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
   min-width: 0;
 }
 .cell.mid, .cell.right{ text-align:right; }
+.cell.mid, .cell.right{
+  min-width: 0;
+  overflow: hidden;
+}
+.cell.op{
+  justify-content: flex-end;
+  display: flex;
+}
+.op-icon-btn{
+  margin: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all .12s ease;
+}
+.op-icon-btn :deep(.el-icon){
+  font-size: 13px;
+}
+.op-icon-btn--cancel{
+  background: rgba(230, 162, 60, .10);
+  border-color: rgba(230, 162, 60, .28);
+}
+.op-icon-btn--cancel:hover{
+  background: rgba(230, 162, 60, .18);
+  border-color: rgba(230, 162, 60, .42);
+}
+.op-icon-btn--edit{
+  background: rgba(64, 158, 255, .10);
+  border-color: rgba(64, 158, 255, .30);
+}
+.op-icon-btn--edit:hover{
+  background: rgba(64, 158, 255, .18);
+  border-color: rgba(64, 158, 255, .45);
+}
+.icon-fav{
+  color: var(--el-color-warning);
+}
+.icon-edit{
+  color: var(--el-color-primary);
+}
 .num{
   font-size: 12px;
   font-weight: 800;
@@ -658,6 +786,8 @@ const fmtMoneySigned = (v) => {
   justify-content: flex-end;
   gap: 3px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 .arrow{
@@ -690,4 +820,5 @@ const fmtMoneySigned = (v) => {
 
 .pad{ height: 10px; flex-shrink: 0; }
 </style>
+
 

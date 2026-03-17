@@ -5,7 +5,7 @@
     </el-header>
 
     <el-container class="layout-body">
-      <el-aside width="236px" class="layout-aside layout-aside-left" id="tour-sidebar">
+      <el-aside width="284px" class="layout-aside layout-aside-left" id="tour-sidebar">
         <div class="aside-inner">
           <div class="aside-nav">
             <Sidebar />
@@ -108,7 +108,7 @@ export default {
   height: calc(100vh - var(--header-height));
   overflow: hidden;
   display: grid;
-  grid-template-columns: 236px 1fr 236px;
+  grid-template-columns: 284px 1fr 236px;
   background: #f4f7fb;
 }
 

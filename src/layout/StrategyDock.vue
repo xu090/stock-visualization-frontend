@@ -3,7 +3,7 @@
     <!-- 顶部：标题 + 保存入口 -->
     <div class="strategy-header">
       <div class="h-top">
-        <span class="strategy-title">策略中心</span>
+        <span class="strategy-title">交易策略</span>
 
         <div class="h-top-actions" id="tour-strategy-save">
           <el-button size="small" plain type="success" @click="allDialogVisible = true">
@@ -564,7 +564,7 @@ const applyStrategy = (type, s) => {
     currentAppliedSelectId.value = s.id
   } else {
     currentAppliedTradeId.value = s.id
-    ElMessage.success(`已应用：${s.name}。可在“投资方案”中按股票生成和调整方案`)
+    ElMessage.success(`已应用：${s.name}。可在“交易方案”中按股票生成和调整方案`)
     return
   }
   ElMessage.success(`已应用：${s.name}`)
@@ -634,7 +634,7 @@ const submitCreate = ({ name, desc }) => {
     })
   }
   createVisible.value = false
-  ElMessage.success('已保存到策略中心')
+  ElMessage.success('已保存到交易策略')
 }
 
 const toggleFavorite = (type, s) => {
@@ -1705,6 +1705,7 @@ const buildFilterParts = (f) => {
   }
 }
 </style>
+
 
 
 

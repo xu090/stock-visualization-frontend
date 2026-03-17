@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
 import { normalizeTradeSnapshot } from '@/utils/tradeStrategy'
 
@@ -46,7 +46,7 @@ const normalizeWeight = (value) => {
 const buildDefaultPlanName = () => {
   const d = new Date()
   const p2 = (v) => String(v).padStart(2, '0')
-  return `投资方案-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`
+  return `鎶曡祫鏂规-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`
 }
 
 const buildPlanId = () => `plan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -266,3 +266,4 @@ export const useInvestmentPlanStore = defineStore('investmentPlan', {
     }
   }
 })
+

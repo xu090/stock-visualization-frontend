@@ -1,8 +1,8 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '@/layout/LayoutIndex.vue'
 import MarketView from '@/views/MarketView.vue'
 import ConceptCreate from '@/views/ConceptCreate.vue'
-import StockView from '@/views/StockView.vue' // ✅ 新增：股票详情页（你后面做）
+import StockView from '@/views/StockView.vue' // 鉁?鏂板锛氳偂绁ㄨ鎯呴〉锛堜綘鍚庨潰鍋氾級
 
 const routes = [
   {
@@ -14,53 +14,53 @@ const routes = [
         path: 'home',
         name: 'Home',
         component: () => import('@/views/HomeView.vue'),
-        meta: { title: '主页' }   
+        meta: { title: '涓婚〉' }   
       },
-      // 行业详情（可选保留）
+      // 琛屼笟璇︽儏锛堝彲閫変繚鐣欙級
       {
         path: 'industry/:id',
         name: 'Industry',
         component: MarketView,
-        meta: { title: '行业详情' }
+        meta: { title: '琛屼笟璇︽儏' }
       },
 
-      // 概念详情（系统概念）
+      // 姒傚康璇︽儏锛堢郴缁熸蹇碉級
       {
         path: 'concept/:id',
         name: 'Concept',
         component: MarketView,
-        meta: { title: '概念详情' }
+        meta: { title: '姒傚康璇︽儏' }
       },
 
-      // 我的概念详情（收藏/自建）
+      // 鎴戠殑姒傚康璇︽儏锛堟敹钘?鑷缓锛?
       {
         path: 'my-concept/:id',
         name: 'MyConcept',
         component: MarketView,
-        meta: { title: '我的概念详情' }
+        meta: { title: '鎴戠殑姒傚康璇︽儏' }
       },
 
-      // ✅ 股票详情（系统/成分股点击进入）
+      // 鉁?鑲＄エ璇︽儏锛堢郴缁?鎴愬垎鑲＄偣鍑昏繘鍏ワ級
       {
         path: 'stock/:code',
         name: 'Stock',
         component: StockView,
-        meta: { title: '股票详情' }
+        meta: { title: '鑲＄エ璇︽儏' }
       },
 
-      // ✅ 股票自选详情（收藏栏进入）
+      // 鉁?鑲＄エ鑷€夎鎯咃紙鏀惰棌鏍忚繘鍏ワ級
       {
         path: 'my-stocks/:code',
         name: 'MyStock',
         component: StockView,
-        meta: { title: '我的股票详情' }
+        meta: { title: '鎴戠殑鑲＄エ璇︽儏' }
       },
 
       {
         path: 'concept-create',
         name: 'ConceptCreate',
         component: ConceptCreate,
-        meta: { title: '新建概念' }
+        meta: { title: '鏂板缓姒傚康' }
       }
     ]
   }
@@ -70,3 +70,4 @@ export default createRouter({
   history: createWebHistory(),
   routes
 })
+

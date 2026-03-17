@@ -1,7 +1,7 @@
-<template>
+﻿<template>
   <div class="plan-dock">
     <div class="plan-head">
-      <span class="plan-title">投资方案</span>
+      <span class="plan-title">交易方案</span>
       <div class="plan-head-actions">
         <el-button  size="small" type="primary" plain @click="openGenerator">
           生成方案
@@ -36,7 +36,7 @@
       </div>
 
       <div v-else class="empty-box">
-        <div class="empty-title">暂无投资方案</div>
+        <div class="empty-title">暂无交易方案</div>
       <div class="empty-sub">点击“生成方案”，支持按交易策略自动推荐。</div>
       </div>
 
@@ -55,7 +55,7 @@
       </div>
     </div>
 
-    <el-dialog v-model="generatorVisible" title="生成投资方案" width="min(1120px, 96vw)" destroy-on-close class="plan-generator-dialog">
+    <el-dialog v-model="generatorVisible" title="生成交易方案" width="min(1120px, 96vw)" destroy-on-close class="plan-generator-dialog">
       <div class="generator-shell">
         
         <div class="generator-top card-like">
@@ -216,7 +216,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="managerVisible" title="我的投资方案" width="1080px" destroy-on-close>
+    <el-dialog v-model="managerVisible" title="我的交易方案" width="1080px" destroy-on-close>
       <div class="manager-shell">
         <div class="manager-left">
           <div class="manager-left-head">方案列表</div>
@@ -614,7 +614,7 @@ const generateByStrategy = () => {
     return
   }
 
-  // 自动生成投资方案保留买入和卖出信号，观望不入候选。
+  // 自动生成交易方案保留买入和卖出信号，观望不入候选。
   const actionablePicks = picks.filter((item) => {
     const action = item.result?.action || 'hold'
     return action !== 'hold'
@@ -847,7 +847,7 @@ const confirmGeneratePlan = () => {
 
   selectedPlanId.value = created.id
   generatorVisible.value = false
-  ElMessage.success(`已生成投资方案：${created.name}`)
+  ElMessage.success(`已生成交易方案：${created.name}`)
 }
 
 const openManager = () => {
