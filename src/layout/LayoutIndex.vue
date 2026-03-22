@@ -25,7 +25,7 @@
         </div>
       </el-main>
 
-      <el-aside width="236px" class="layout-aside layout-aside-right">
+      <el-aside width="284px" class="layout-aside layout-aside-right">
         <div class="right-inner">
           <div class="right-strategy" id="tour-strategy">
             <StrategyDock />
@@ -108,7 +108,7 @@ export default {
   height: calc(100vh - var(--header-height));
   overflow: hidden;
   display: grid;
-  grid-template-columns: 284px 1fr 236px;
+  grid-template-columns: 284px 1fr 284px;
   background: #f4f7fb;
 }
 
@@ -146,7 +146,7 @@ export default {
   display: grid;
   grid-template-rows: minmax(0, 1.3fr) minmax(0, 1.2fr);
   gap: 12px;
-  padding: 10px 10px 10px 8px;
+  padding: 6px;
 }
 .right-strategy,
 .right-plan{

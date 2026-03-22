@@ -957,7 +957,7 @@ const updateRow = (rowId, patch) => {
 .scroll-hidden::-webkit-scrollbar{ width:0; height:0; }
 
 .plan-dock{
-  width: 212px;
+  width: 100%;
   height: 100%;
   min-height: 0;
   background: transparent;
