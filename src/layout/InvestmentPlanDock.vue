@@ -12,46 +12,46 @@
       </div>
     </div>
 
-    <div class="plan-meta">
-      <div class="plan-sub">买入 {{ buyPlanCount }} / 卖出 {{ sellPlanCount }}</div>
-      <div class="plan-sub">{{ activePlanName }}</div>
-    </div>
-
     <div class="plan-content scroll-hidden">
-      <div class="plan-list" v-if="planPreviewList.length">
-        <div v-for="p in planPreviewList" :key="p.id" class="plan-item" :class="`act-${p.action}`">
-          <div class="plan-line1">
-            <span class="plan-symbol">{{ p.stockName }}</span>
-            <span class="plan-action">{{ actionText(p.action) }}</span>
-          </div>
-          <div class="plan-line2">
-            <span class="mini">策略</span>
-            <span class="val">{{ p.strategyName || '--' }}</span>
-          </div>
-          <div class="plan-line2">
-            <span class="mini">仓位/金额</span>
-            <span class="val">{{ formatPct(p.targetWeight) }} / {{ formatMoney(p.budgetYuan) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="empty-box">
+      <div v-if="!savedPlans.length && !planPreviewList.length" class="empty-box">
         <div class="empty-title">暂无交易方案</div>
       <div class="empty-sub">点击“生成方案”，支持按交易策略自动推荐。</div>
       </div>
 
       <div class="saved-list" v-if="savedPlans.length">
-        <div class="saved-head">我的方案（{{ savedPlans.length }}）</div>
-        <div
-          v-for="p in savedPlans"
-          :key="p.id"
-          class="saved-item"
-          :class="{ active: p.id === investmentPlanStore.activePlanId }"
-          @click="loadSavedPlan(p.id)"
-        >
-          <span class="saved-name">{{ p.name }}</span>
-          <span class="saved-time">{{ formatDateTime(p.updatedAt) }}</span>
-        </div>
+        <div class="saved-head">我的方案</div>
+        <el-collapse v-model="openSavedGroupKeys" class="saved-collapse">
+          <el-collapse-item
+            v-for="group in savedPlanGroups"
+            :key="group.key"
+            :name="group.key"
+          >
+            <template #title>
+              <div class="saved-group-head">
+                <div class="saved-group-title">
+                  <el-icon ><FolderOpened /></el-icon>
+                  <span class="saved-group-name">{{ group.label }}</span>
+                </div>
+              </div>
+            </template>
+            <div class="saved-group-list">
+              <div
+                v-for="p in group.plans"
+                :key="p.id"
+                class="saved-item"
+                :class="{ active: p.id === investmentPlanStore.activePlanId }"
+                @click="loadSavedPlan(p.id)"
+              >
+                <span class="saved-item-rail"></span>
+                <el-icon class="saved-item-icon"><Document /></el-icon>
+                <div class="saved-item-main">
+                  <span class="saved-name">{{ p.name }}</span>
+                  <span class="saved-time">{{ formatDateTime(p.updatedAt) }}</span>
+                </div>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </div>
     </div>
 
@@ -221,16 +221,39 @@
         <div class="manager-left">
           <div class="manager-left-head">方案列表</div>
           <div class="manager-list scroll-hidden">
-            <div
-              v-for="p in savedPlans"
-              :key="p.id"
-              class="manager-plan-item"
-              :class="{ active: p.id === selectedPlanId }"
-              @click="selectPlan(p.id)"
-            >
-              <div class="manager-plan-name">{{ p.name }}</div>
-              <div class="manager-plan-time">{{ formatDateTime(p.updatedAt) }}</div>
-            </div>
+            <el-collapse v-model="openSavedGroupKeys" class="manager-plan-collapse">
+              <el-collapse-item
+                v-for="group in savedPlanGroups"
+                :key="`manager-${group.key}`"
+                :name="group.key"
+              >
+                <template #title>
+                  <div class="manager-plan-group-head">
+                    <div class="saved-group-title">
+                      <el-icon class="saved-group-icon"><FolderOpened /></el-icon>
+                      <span class="manager-plan-group-name">{{ group.label }}</span>
+                    </div>
+                    <span class="manager-plan-group-count">{{ group.plans.length }}</span>
+                  </div>
+                </template>
+                <div class="manager-plan-group-list">
+                  <div
+                    v-for="p in group.plans"
+                    :key="p.id"
+                    class="manager-plan-item"
+                    :class="{ active: p.id === selectedPlanId }"
+                    @click="selectPlan(p.id)"
+                  >
+                    <span class="saved-item-rail"></span>
+                    <el-icon class="saved-item-icon"><Document /></el-icon>
+                    <div class="manager-plan-item-main">
+                      <div class="manager-plan-name">{{ p.name }}</div>
+                      <div class="manager-plan-time">{{ formatDateTime(p.updatedAt) }}</div>
+                    </div>
+                  </div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
           </div>
         </div>
 
@@ -313,6 +336,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderOpened, Document } from '@element-plus/icons-vue'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useStrategyStore } from '@/stores/strategy'
 import { useStockStore } from '@/stores/stock'
@@ -329,15 +353,8 @@ const LOT_SIZE = 100
 const tradeStrategies = computed(() => strategyStore.tradeStrategies || [])
 const savedPlans = computed(() => investmentPlanStore.savedPlans || [])
 const planPreviewList = computed(() => (investmentPlanStore.plans || []).slice(0, 6))
-const buyPlanCount = computed(() => (investmentPlanStore.buyPlans || []).length)
-const sellPlanCount = computed(() => (investmentPlanStore.sellPlans || []).length)
 const currentAppliedTradeId = computed(() => homeFilter.appliedTradeStrategyId || null)
-
-const activePlanName = computed(() => {
-  const active = investmentPlanStore.activeSavedPlan
-  if (active?.name) return `当前：${active.name}`
-  return investmentPlanStore.plans.length ? '当前：临时方案' : '当前：无'
-})
+const openSavedGroupKeys = ref([])
 
 const generationSource = ref('byStrategy')
 const autoCandidateScope = ref('my')
@@ -375,31 +392,41 @@ const findStockByCode = (code) => {
   return base ? { code, name: base.name || code } : null
 }
 
-const actionText = (action) => {
-  if (action === 'buy') return '买入'
-  if (action === 'sell') return '卖出'
-  return '观望'
-}
-
-const formatPct = (v) => {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return '--'
-  return `${n}%`
-}
-
-const formatMoney = (v) => {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return '--'
-  if (n >= 10000) return `${Math.round(n / 10000)}万`
-  return `${Math.round(n)}`
-}
-
 const formatDateTime = (ts) => {
   if (!ts) return '--'
   const d = new Date(ts)
   const p2 = (v) => String(v).padStart(2, '0')
   return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`
 }
+
+const savedPlanGroups = computed(() => {
+  const groups = new Map()
+  ;(savedPlans.value || []).forEach((plan) => {
+    const key = plan.strategyId != null ? `strategy-${plan.strategyId}` : `name-${plan.strategyName || 'ungrouped'}`
+    const label = plan.strategyName || '未归类策略'
+    if (!groups.has(key)) groups.set(key, { key, label, plans: [] })
+    groups.get(key).plans.push(plan)
+  })
+  return Array.from(groups.values())
+})
+
+watch(
+  savedPlanGroups,
+  (groups) => {
+    const keys = groups.map(group => group.key)
+    if (!keys.length) {
+      openSavedGroupKeys.value = []
+      return
+    }
+    const current = openSavedGroupKeys.value.filter(key => keys.includes(key))
+    if (current.length) {
+      openSavedGroupKeys.value = current
+      return
+    }
+    openSavedGroupKeys.value = [keys[0]]
+  },
+  { immediate: true, deep: true }
+)
 
 const managerVisible = computed({
   get: () => investmentPlanStore.managerVisible,
@@ -1040,23 +1067,143 @@ const updateRow = (rowId, patch) => {
 .val{ font-weight: 900; color:#374151; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 .saved-list{
-  border-top: 1px dashed rgba(0,0,0,.12);
-  padding-top: 8px;
+  border-top: 1px solid rgba(148,163,184,.18);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.saved-collapse{
+  border-top: 0;
+}
+.saved-collapse :deep(.el-collapse-item){
+  margin-bottom: 6px;
+  border: 0;
+}
+.saved-collapse :deep(.el-collapse-item__header){
+  width: 240px;
+  min-height: 32px;
+  line-height: normal;
+  border-bottom: 0;
+  background: #fff;
+  padding: 1px 8px;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 6px;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(15,23,42,.02);
+}
+.saved-collapse :deep(.el-collapse-item__wrap){
+  border-bottom: 0;
+  background: transparent;
+}
+.saved-collapse :deep(.el-collapse-item__content){
+  padding-bottom: 0;
+  padding-top: 2px;
+}
+.saved-collapse :deep(.el-collapse-item__arrow){
+  color: #94a3b8;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.saved-head{ font-size: 12px; font-weight: 800; color: #6b7280; }
+.saved-group{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.saved-group-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.saved-group-title{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.saved-group-icon{
+  font-size: 14px;
+  color: #e6a23c;
+  flex-shrink: 0;
+}
+.saved-group-name{
+  font-size: 12px;
+  font-weight: 800;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-group-count{
+  font-size: 11px;
+  font-weight: 800;
+  color: #9ca3af;
+  min-width: 18px;
+  text-align: right;
+}
+.saved-group-list{
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding-left: 16px;
+  position: relative;
 }
-.saved-head{ font-size: 12px; font-weight: 800; color: #6b7280; }
+.saved-group-list::before{
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(148,163,184,.24);
+}
 .saved-item{
-  border: 1px solid rgba(0,0,0,.08);
-  border-radius: 10px;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 12px;
   background: #fff;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 10px rgba(15,23,42,.04);
   cursor: pointer;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.saved-item:hover{
+  border-color: rgba(96,165,250,.28);
+  box-shadow: 0 8px 16px rgba(15,23,42,.06);
+}
+.saved-item-rail{
+  position: absolute;
+  left: -9px;
+  top: 15px;
+  width: 7px;
+  height: 1px;
+  background: rgba(148,163,184,.24);
+}
+.saved-item-icon{
+  margin-top: 2px;
+  font-size: 13px;
+  color: #7b8aa3;
+  flex-shrink: 0;
+}
+.saved-item-main{
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .saved-item.active{
-  border-color: rgba(64,158,255,.4);
-  background: rgba(64,158,255,.07);
+  border-color: rgba(96,165,250,.55);
+  background: linear-gradient(180deg, rgba(239,246,255,.9) 0%, rgba(247,250,255,.95) 100%);
+  box-shadow: 0 8px 18px rgba(96,165,250,.12);
 }
 .saved-name{
   font-size: 12px;
@@ -1072,6 +1219,109 @@ const updateRow = (rowId, patch) => {
   font-size: 11px;
   color: #9ca3af;
   display: block;
+}
+.manager-plan-group{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.manager-plan-collapse{
+  border-top: 0;
+}
+.manager-plan-collapse :deep(.el-collapse-item){
+  margin-bottom: 6px;
+  border: 0;
+}
+.manager-plan-collapse :deep(.el-collapse-item__header){
+  height: auto;
+  min-height: 32px;
+  line-height: normal;
+  border-bottom: 0;
+  background: #fff;
+  padding: 1px 8px;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 6px;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(15,23,42,.02);
+}
+.manager-plan-collapse :deep(.el-collapse-item__wrap){
+  border-bottom: 0;
+  background: transparent;
+}
+.manager-plan-collapse :deep(.el-collapse-item__content){
+  padding-bottom: 0;
+  padding-top: 2px;
+}
+.manager-plan-collapse :deep(.el-collapse-item__arrow){
+  color: #94a3b8;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.manager-plan-group-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.manager-plan-group-name{
+  font-size: 12px;
+  font-weight: 800;
+  color: #374151;
+}
+.manager-plan-group-count{
+  font-size: 11px;
+  font-weight: 800;
+  color: #9ca3af;
+  min-width: 18px;
+  text-align: right;
+}
+.manager-plan-group-list{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 16px;
+  position: relative;
+}
+.manager-plan-group-list::before{
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(148,163,184,.24);
+}
+.manager-plan-item{
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 10px;
+  box-shadow: 0 4px 10px rgba(15,23,42,.04);
+  cursor: pointer;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.manager-plan-item:hover{
+  border-color: rgba(96,165,250,.28);
+  box-shadow: 0 8px 16px rgba(15,23,42,.06);
+}
+.manager-plan-item.active{
+  border-color: rgba(96,165,250,.55);
+  background: linear-gradient(180deg, rgba(239,246,255,.9) 0%, rgba(247,250,255,.95) 100%);
+  box-shadow: 0 8px 18px rgba(96,165,250,.12);
+}
+.manager-plan-item-main{
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .empty-box{

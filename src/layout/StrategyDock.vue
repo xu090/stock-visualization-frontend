@@ -63,7 +63,7 @@
       <!-- 选股策略 -->
       <div class="section">
         <div class="section-head">
-          <span class="section-title">选股策略</span>
+          <span class="section-title">筛选策略</span>
           <span class="section-sub">收藏 {{ selectFavoriteCount }} / 自定义{{ selectCustomCount }}</span>
         </div>
 
@@ -146,7 +146,7 @@
 
             <!-- Popover 内容：仅保留“关闭 / 应用”，条件按正常文本展示 -->
             <div class="pop-body" v-if="activeStrategy">
-              <div class="pop-title">选股策略：{{ activeStrategy.name }}</div>
+              <div class="pop-title">筛选策略：{{ activeStrategy.name }}</div>
 
               <div class="pop-grid">
                 <div class="pop-row" v-if="activeStrategy.desc">
@@ -181,7 +181,7 @@
         </div>
 
         <div v-else class="empty-trade">
-          <div class="empty-title">暂无选股策略</div>
+          <div class="empty-title">暂无筛选策略</div>
           <div class="empty-sub">当前仅展示“收藏”或“自定义”策略，可在“全部策略”中收藏。</div>
         </div>
       </div>
@@ -279,7 +279,7 @@
     <SaveStrategyDialog
       v-model="createVisible"
       :type="createType"
-      :title="createType === 'select' ? '保存当前为选股策略' : '保存当前为交易策略'"
+      :title="createType === 'select' ? '保存当前为筛选策略' : '保存当前为交易策略'"
       :metrics-text="createType === 'select' ? metricsTextFull(homeSnapshot) : ''"
       :filters-text="createType === 'select' ? filtersTextFull(homeSnapshot) : ''"
       :name-placeholder="createType === 'select' ? '例如：强势主线' : '例如：突破回踩进场'"
@@ -289,7 +289,7 @@
     <!-- 编辑弹窗（布局已调整） -->
     <el-dialog
       v-model="editVisible"
-      :title="editType === 'select' ? '编辑选股策略' : '编辑交易策略'"
+      :title="editType === 'select' ? '编辑筛选策略' : '编辑交易策略'"
       :width="editType === 'trade' ? '700px' : '940px'"
       class="edit-dialog"
       :close-on-click-modal="false"
@@ -516,7 +516,7 @@ const selectCustomCount = computed(() =>
   (strategyStore.selectStrategies || []).filter(s => !!s.isCustom).length
 )
 
-/** Home 快照（用于创建选股策略） */
+/** Home 快照（用于创建筛选策略） */
 const homeSnapshot = computed(() => homeFilter.toSnapshot?.() || {
   selectedMetrics: homeFilter.selectedMetrics || [],
   filters: homeFilter.filters || {},
@@ -583,7 +583,7 @@ const toggleApply = async (type, s) => {
   if (type === 'select' && s.id === currentAppliedSelectId.value) {
     currentAppliedSelectId.value = null
     resetHomeSelectToDefault()
-    ElMessage.success('已取消选股策略应用')
+    ElMessage.success('已取消筛选策略应用')
     await ensureHomePage()
     return
   }
@@ -603,7 +603,7 @@ const clearApplied = (type) => {
   if (type === 'select') {
     currentAppliedSelectId.value = null
     resetHomeSelectToDefault()
-    ElMessage.success('已清空选股策略')
+    ElMessage.success('已清空筛选策略')
   } else {
     currentAppliedTradeId.value = null
     ElMessage.success('已清空交易策略')

@@ -1,5 +1,6 @@
 // src/stores/concept.js
 import { defineStore } from 'pinia'
+import { useAlertCenterStore } from '@/stores/alertCenter'
 
 /**
  * ✅ 单列表模型（推荐）
@@ -327,6 +328,8 @@ export const useConceptStore = defineStore('concept', {
       const idx = (this.conceptList || []).findIndex(c => normId(c.id) === id)
       if (idx < 0) return
       this.conceptList[idx].favorite = true
+      const alertCenter = useAlertCenterStore()
+      alertCenter.captureConceptBaseline(id)
     },
 
     /** ✅ 兼容旧接口：取消自选（取消收藏） */
@@ -345,6 +348,10 @@ export const useConceptStore = defineStore('concept', {
       const idx = (this.conceptList || []).findIndex(c => normId(c.id) === id)
       if (idx < 0) return
       this.conceptList[idx].favorite = !this.conceptList[idx].favorite
+      if (this.conceptList[idx].favorite) {
+        const alertCenter = useAlertCenterStore()
+        alertCenter.captureConceptBaseline(id)
+      }
     },
 
     /** ✅ 新建自定义概念：editable=true，favorite 默认 false */

@@ -42,12 +42,33 @@
             v-for="c in myConceptsEnriched"
             :key="c.id"
             class="row"
-            :class="{ active: isConceptRouteActive(c.id) }"
+            :class="{
+              active: isConceptRouteActive(c.id),
+              'has-alert': !!conceptAlertById(c.id),
+              'has-alert-high': conceptAlertById(c.id)?.level === 'high'
+            }"
             @click="goConcept(c.id)"
           >
             <div class="cell name">
               <el-tooltip :content="c.name" placement="top" effect="dark">
                 <div class="name-main">{{ shortDisplayName(c.name) }}</div>
+              </el-tooltip>
+              <el-tooltip
+                v-if="conceptAlertById(c.id)"
+                :content="conceptAlertText(c.id)"
+                placement="top-start"
+                effect="dark"
+              >
+                <div v-if="conceptAlertLines(c.id).length" class="alert-lines">
+                  <div
+                    v-for="line in conceptAlertLines(c.id)"
+                    :key="`${c.id}-${line.code}`"
+                    class="alert-chip"
+                    :class="alertChipClass(line)"
+                  >
+                    {{ line.text }}
+                  </div>
+                </div>
               </el-tooltip>
             </div>
 
@@ -81,6 +102,17 @@
             暂无自选概念
           </div>
         </div>
+
+        <div class="fav-foot">
+          <el-button
+            class="concept-stocks-entry"
+            text
+            @click="conceptStocksVisible = true"
+          >
+            <el-icon><Tickets /></el-icon>
+            <span>成分股速览</span>
+          </el-button>
+        </div>
       </section>
 
       <!-- 自选股票 -->
@@ -109,7 +141,9 @@
             :class="{
               active: isStockRouteActive(s.code),
               'signal-buy': s.tradeAction === 'buy',
-              'signal-sell': s.tradeAction === 'sell'
+              'signal-sell': s.tradeAction === 'sell',
+              'has-alert': !!stockAlertByCode(s.code),
+              'has-alert-high': stockAlertByCode(s.code)?.level === 'high'
             }"
             @click="goStock(s.code)"
           >
@@ -118,6 +152,23 @@
                 <div class="name-main">{{ shortDisplayName(s.name) }}</div>
               </el-tooltip>
               <div class="name-sub">{{ s.code || '--' }}</div>
+              <el-tooltip
+                v-if="stockAlertByCode(s.code)"
+                :content="stockAlertText(s.code)"
+                placement="top-start"
+                effect="dark"
+              >
+                <div v-if="stockAlertLines(s.code).length" class="alert-lines">
+                  <div
+                    v-for="line in stockAlertLines(s.code)"
+                    :key="`${s.code}-${line.code}`"
+                    class="alert-chip"
+                    :class="alertChipClass(line)"
+                  >
+                    {{ line.text }}
+                  </div>
+                </div>
+              </el-tooltip>
              <div
                 v-if="appliedTradeStrategy"
                 class="trade-signal"
@@ -164,6 +215,96 @@
       mode="dialog"
       @saved="saveConceptEdit"
     />
+
+    <el-dialog
+      v-model="conceptStocksVisible"
+      title="自选概念成分股"
+      width="min(980px, 92vw)"
+      destroy-on-close
+      class="concept-stocks-dialog"
+    >
+      <div class="concept-stocks-shell scroll-hidden">
+        <div v-if="favoriteConceptStockSections.length" class="concept-stock-split">
+          <aside class="concept-stock-sidebar">
+            <div
+              v-for="section in favoriteConceptStockSections"
+              :key="section.id"
+              class="concept-nav-item"
+              :class="{ active: selectedConceptStockSectionId === String(section.id) }"
+              @click="selectConceptStockSection(section.id)"
+            >
+              <div class="concept-nav-main">
+                <el-icon class="concept-stock-arrow"><ArrowRight /></el-icon>
+                <span class="concept-stock-name">{{ section.name }}</span>
+              </div>
+              <div class="concept-nav-meta">
+                <span class="concept-stock-meta">{{ section.stocks.length }} 支</span>
+                <span v-if="section.editable" class="concept-stock-tag">自定义</span>
+              </div>
+            </div>
+          </aside>
+
+          <section v-if="selectedConceptStockSection" class="concept-stock-detail">
+            <div class="concept-stock-head">
+              <div class="concept-stock-title">
+                <span class="concept-stock-name">{{ selectedConceptStockSection.name }}</span>
+                <span class="concept-stock-meta">{{ selectedConceptStockSection.stocks.length }} 支</span>
+                <span v-if="selectedConceptStockSection.editable" class="concept-stock-tag">自定义</span>
+              </div>
+            </div>
+
+            <div class="concept-stock-list">
+              <div
+                v-for="row in selectedConceptStockSection.stocks"
+                :key="`${selectedConceptStockSection.id}-${row.code}`"
+                class="concept-stock-row"
+              >
+                <div class="concept-stock-main" @click="goStock(row.code)">
+                  <div class="concept-stock-main-top">
+                    <span class="concept-stock-row-name">{{ row.name }}</span>
+                    <span class="concept-stock-row-code">{{ row.code }}</span>
+                  </div>
+                  <div class="concept-stock-metrics">
+                    <span class="metric-inline" :class="chgClass(row.change)">
+                      {{ fmtPctSigned(row.change) }}
+                    </span>
+                    <span class="metric-inline" :class="moneyClass(row.netInflow)">
+                      {{ fmtMoneySigned(row.netInflow) }}
+                    </span>
+                    <span class="metric-inline metric-inline--price">
+                      {{ fmtPrice(row.price) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="concept-stock-actions">
+                  <el-tooltip :content="stockStore.isStockFavorite(row.code) ? '取消收藏' : '收藏股票'" placement="top" effect="dark">
+                    <el-button
+                      link
+                      class="op-icon-btn op-icon-btn--cancel"
+                      @click.stop="toggleStockFavorite(row.code)"
+                    >
+                      <el-icon class="icon-fav"><StarFilled v-if="stockStore.isStockFavorite(row.code)" /><Star v-else /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  <el-tooltip v-if="selectedConceptStockSection.editable" content="从概念中删除" placement="top" effect="dark">
+                    <el-button
+                      link
+                      class="op-icon-btn op-icon-btn--edit"
+                      @click.stop="removeStockFromConcept(selectedConceptStockSection, row.code)"
+                    >
+                      <el-icon class="icon-edit"><Delete /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div v-else class="empty">暂无自选概念成分股</div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -180,8 +321,9 @@ import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
+import { useAlertCenterStore } from '@/stores/alertCenter'
 import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
-import { HomeFilled, Tickets, EditPen, StarFilled } from '@element-plus/icons-vue'
+import { HomeFilled, Tickets, EditPen, StarFilled, Star, Delete, ArrowRight } from '@element-plus/icons-vue'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 import { ElMessage } from 'element-plus'
 
@@ -191,6 +333,7 @@ const conceptStore = useConceptStore()
 const stockStore = useStockStore()
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
+const alertCenter = useAlertCenterStore()
 
 /**
  * ✅ 顶部 tab：默认 concept
@@ -280,6 +423,7 @@ const myStocksOldSafe = computed(() => {
 })
 
 const currentAppliedTradeId = computed(() => homeFilter.appliedTradeStrategyId || null)
+const currentAppliedSelectId = computed(() => homeFilter.appliedSelectStrategyId || null)
 const appliedTradeStrategy = computed(() => {
   const id = currentAppliedTradeId.value
   if (!id) return null
@@ -344,8 +488,112 @@ const myStockEnriched = computed(() => {
   })
 })
 
+const latestAlertByTarget = computed(() => alertCenter.latestAlertByTarget || {})
+const stockAlertByCode = (code) => latestAlertByTarget.value[`stock:${normalizeCode(code)}`] || null
+const conceptAlertById = (id) => latestAlertByTarget.value[`concept:${String(id)}`] || null
+const formatAlertText = (alert) => {
+  if (!alert) return ''
+  const lines = Array.isArray(alert.items) ? alert.items.map(item => item.text).filter(Boolean) : []
+  return lines.length ? lines.join('；') : (alert.summary || '')
+}
+const stockAlertText = (code) => formatAlertText(stockAlertByCode(code))
+const conceptAlertText = (id) => formatAlertText(conceptAlertById(id))
+const shortenAlertText = (item) => {
+  const code = item?.code || ''
+  const text = String(item?.text || '')
+  if (code === 'trade-drift' || code === 'select-drift') return '策略偏离'
+  if (code === 'price-reversal') return text.includes('转跌') ? '价格转跌' : '价格变涨'
+  if (code === 'concept-reversal') return text.includes('转跌') ? '概念转跌' : '概念变涨'
+  if (code === 'net-inflow-flip') return text.includes('流出') ? '资金转流出' : '资金转流入'
+  if (code === 'main-inflow-flip') return text.includes('流出') ? '主力转流出' : '主力转流入'
+  if (code === 'concept-inflow-flip') return text.includes('流出') ? '资金转流出' : '资金转流入'
+  return text
+}
+const buildAlertLines = (alert) => {
+  const items = Array.isArray(alert?.items) ? alert.items : []
+  if (!items.length) return []
+  const nonStrategy = items.filter(item => !['trade-drift', 'select-drift'].includes(item.code))
+  const strategy = items.filter(item => ['trade-drift', 'select-drift'].includes(item.code))
+  return [...nonStrategy.slice(0, 1), ...strategy.slice(0, 1)].slice(0, 2).map(item => ({
+    code: item.code,
+    level: item.level || 'medium',
+    text: shortenAlertText(item)
+  }))
+}
+const stockAlertLines = (code) => buildAlertLines(stockAlertByCode(code))
+const conceptAlertLines = (id) => buildAlertLines(conceptAlertById(id))
+const isDownAlertText = (text) => /转跌|跌停|走弱|流出|下降|下跌/.test(String(text || ''))
+const alertChipClass = (line) => {
+  if (isDownAlertText(line?.text)) return 'alert-chip--down'
+  if (line?.code === 'trade-drift' || line?.code === 'select-drift') return 'alert-chip--strategy'
+  return `alert-chip--${line?.level || 'medium'}`
+}
+
+watch(
+  [myConceptsEnriched, myStockEnriched, currentAppliedTradeId, currentAppliedSelectId],
+  () => {
+    alertCenter.scanAll()
+  },
+  { immediate: true, deep: true }
+)
+
 const conceptDrawerVisible = ref(false)
+const conceptStocksVisible = ref(false)
+const selectedConceptStockSectionId = ref('')
 const editingConcept = ref(null)
+
+const favoriteConceptStockSections = computed(() => {
+  return myConceptsEnriched.value.map((concept) => {
+    const codes = (Array.isArray(concept.stockCodes) ? concept.stockCodes : [])
+      .map(item => normalizeCode(typeof item === 'object' ? item?.code : item))
+      .filter(Boolean)
+
+    const stocks = codes
+      .map((code) => {
+        const base = stockStore.getStockBaseByCode?.(code)
+        const q = stockStore.getStockByCodeEnriched?.(code, concept.name || '')
+        return {
+          code,
+          name: base?.name || q?.name || code,
+          price: Number(q?.price ?? q?.close ?? 0),
+          change: Number(q?.change ?? q?.changePercent ?? 0),
+          netInflow: Number(q?.netInflow ?? 0)
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => Math.abs(Number(b.change)) - Math.abs(Number(a.change)))
+
+    return {
+      id: concept.id,
+      name: concept.name,
+      editable: !!concept.editable,
+      stocks
+    }
+  })
+})
+
+watch(
+  [conceptStocksVisible, favoriteConceptStockSections],
+  ([visible, sections]) => {
+    if (!visible) return
+    const ids = (sections || []).map(section => String(section.id))
+    if (!ids.length) {
+      selectedConceptStockSectionId.value = ''
+      return
+    }
+    if (!ids.includes(String(selectedConceptStockSectionId.value))) {
+      selectedConceptStockSectionId.value = ids[0]
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+const selectedConceptStockSection = computed(() => {
+  return favoriteConceptStockSections.value.find(section => String(section.id) === String(selectedConceptStockSectionId.value)) || null
+})
+const selectConceptStockSection = (id) => {
+  selectedConceptStockSectionId.value = String(id)
+}
 
 const unfavoriteConcept = (concept) => {
   if (!concept?.id) return
@@ -356,6 +604,30 @@ const unfavoriteStock = (code) => {
   const c = normalizeCode(code)
   if (!c) return
   stockStore.removeStockFromMyStocks?.(c)
+}
+
+const toggleStockFavorite = (code) => {
+  const c = normalizeCode(code)
+  if (!c) return
+  if (stockStore.isStockFavorite?.(c)) stockStore.removeStockFromMyStocks?.(c)
+  else stockStore.addStockToMyStocks?.(c)
+}
+
+const removeStockFromConcept = (section, code) => {
+  if (!section?.editable) return
+  const concept = conceptStore.getConceptById?.(section.id)
+  if (!concept) return
+  const nextStockCodes = (Array.isArray(concept.stockCodes) ? concept.stockCodes : [])
+    .map(item => typeof item === 'object' ? item?.code : item)
+    .map(normalizeCode)
+    .filter(itemCode => itemCode && itemCode !== normalizeCode(code))
+
+  conceptStore.updateUserConcept?.({
+    ...concept,
+    id: concept.id,
+    stockCodes: nextStockCodes
+  })
+  ElMessage.success('已从概念中删除成分股')
 }
 
 const editConceptFromSidebar = (concept) => {
@@ -422,12 +694,18 @@ const isStockRouteActive = (code) => {
  */
 const goConcept = (id) => {
   const sid = String(id)
+  alertCenter.markTargetRead('concept', sid)
   if (activeTopTab.value === 'industry') router.push(`/industry/${sid}`)
   else router.push(`/concept/${sid}`) // ✅ 主路由
   // else router.push(`/my-concept/${sid}`) // 兼容备选
 }
 
-const goStock = (code) => router.push(`/my-stocks/${normalizeCode(code)}`)
+const goStock = (code) => {
+  const c = normalizeCode(code)
+  alertCenter.markTargetRead('stock', c)
+  conceptStocksVisible.value = false
+  router.push(`/my-stocks/${c}`)
+}
 
 /** 格式化 */
 const arrow = (v) => {
@@ -456,6 +734,11 @@ const fmtPriceSigned = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '--'
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
+}
+const fmtPrice = (v) => {
+  const n = Number(v)
+  if (Number.isNaN(n) || !n) return '--'
+  return n.toFixed(2)
 }
 const fmtMoneySigned = (v) => {
   const n = Number(v)
@@ -666,6 +949,26 @@ const fmtMoneySigned = (v) => {
   overflow-y: auto;
   padding: 2px 2px 4px;
 }
+.fav-foot{
+  flex-shrink: 0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid #e8eef7;
+  background: #fcfdff;
+}
+.concept-stocks-entry{
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+  color: #2f80ed;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(47, 128, 237, .06);
+}
+.concept-stocks-entry:hover{
+  background: rgba(47, 128, 237, .12);
+}
 
 /* 行 */
 .row{
@@ -726,6 +1029,41 @@ const fmtMoneySigned = (v) => {
 .trade-signal.sig-buy{ color: #f56c6c; }
 .trade-signal.sig-sell{ color: #67c23a; }
 .trade-signal.sig-hold{ color: #909399; }
+.alert-lines{
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+.alert-chip{
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: none;
+  min-width: fit-content;
+  padding: 0;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: visible;
+}
+.alert-chip--medium{
+  color: #b26a00;
+}
+.alert-chip--high{
+  color: #f56c6c;
+}
+.alert-chip--down{
+  color: #67c23a;
+}
+.alert-chip--strategy{
+  color: #f56c6c;
+}
 
 /* 数字 */
 .cell.name{
@@ -819,6 +1157,144 @@ const fmtMoneySigned = (v) => {
 }
 
 .pad{ height: 10px; flex-shrink: 0; }
+
+.concept-stocks-shell{
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.concept-stock-split{
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 56vh;
+}
+.concept-stock-sidebar{
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #f7faff;
+  padding: 8px;
+  overflow-y: auto;
+}
+.concept-nav-item{
+  padding: 10px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: .12s ease;
+}
+.concept-nav-item + .concept-nav-item{
+  margin-top: 6px;
+}
+.concept-nav-item:hover{
+  background: rgba(47,128,237,.06);
+}
+.concept-nav-item.active{
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(64,158,255,.22);
+}
+.concept-nav-main{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.concept-nav-meta{
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 21px;
+}
+.concept-stock-detail{
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  min-width: 0;
+}
+.concept-stock-head{
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6edf6;
+  background: #f7faff;
+}
+.concept-stock-title{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.concept-stock-arrow{
+  font-size: 13px;
+  color: #7b8aa3;
+  flex-shrink: 0;
+}
+.concept-stock-name{
+  font-size: 14px;
+  font-weight: 800;
+  color: #1f2d3d;
+}
+.concept-stock-meta{
+  font-size: 12px;
+  color: #70819b;
+}
+.concept-stock-tag{
+  font-size: 11px;
+  color: #409eff;
+  background: rgba(64, 158, 255, .10);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.concept-stock-list{
+  display: grid;
+}
+.concept-stock-row{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.concept-stock-row + .concept-stock-row{
+  border-top: 1px solid #eef3f9;
+}
+.concept-stock-main{
+  min-width: 0;
+  cursor: pointer;
+}
+.concept-stock-main-top{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.concept-stock-row-name{
+  font-size: 13px;
+  font-weight: 800;
+  color: #1f2d3d;
+}
+.concept-stock-row-code{
+  font-size: 12px;
+  color: #6f7f99;
+}
+.concept-stock-metrics{
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.metric-inline{
+  font-size: 12px;
+  font-weight: 700;
+}
+.metric-inline--price{
+  color: #5d6b82;
+}
+.concept-stock-actions{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 </style>
 
 

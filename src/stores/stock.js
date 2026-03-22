@@ -1,5 +1,9 @@
 // src/stores/stock.js
+/* global globalThis */
 import { defineStore } from 'pinia'
+import { useAlertCenterStore } from '@/stores/alertCenter'
+
+const httpClient = globalThis.axios
 
 /* =========================
    Utils（稳定 + 时变tick）
@@ -312,7 +316,10 @@ export const useStockStore = defineStore('stock', {
       }
 
 
-      const resp = await axios.post('/api/quotes', { codes: uniq })
+      if (!httpClient?.post) {
+        throw new Error('axios client is not available')
+      }
+      const resp = await httpClient.post('/api/quotes', { codes: uniq })
       const rows = resp?.data?.data || resp?.data || []
       rows.forEach(q => {
         const c = normalizeCode(q?.code)
@@ -352,6 +359,8 @@ export const useStockStore = defineStore('stock', {
       if (!c) return
       if (this.myStockCodes.includes(c)) return
       this.myStockCodes.push(c)
+      const alertCenter = useAlertCenterStore()
+      alertCenter.captureStockBaseline(c)
     },
 
     removeStockFromMyStocks(code) {

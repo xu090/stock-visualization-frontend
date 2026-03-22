@@ -1048,7 +1048,7 @@ const fmtUpRatio = (v) => {
 .panel-actions{ display:flex; align-items:center; gap: 8px; }
 
 .panel-search{
-  flex: 0 0 340px;
+  flex: 0 0 250px;
   height: 92px;
 }
 .search-input{ width: 100%; }
