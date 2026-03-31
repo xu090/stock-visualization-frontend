@@ -29,19 +29,11 @@
           </div>
         </div>
 
-        <div class="fav-table-head">
-          <span class="h-name">{{ activeTopTab === 'industry' ? '行业名称' : '概念名称' }}</span>
-          <span class="h-mid">涨跌幅</span>
-          <span class="h-right">净流入</span>
-          <span class="h-op">操作</span>
-        </div>
-
-        <!-- ✅ 内部滚动 -->
         <div class="fav-list scroll-hidden">
           <div
             v-for="c in myConceptsEnriched"
             :key="c.id"
-            class="row"
+            class="fav-item"
             :class="{
               active: isConceptRouteActive(c.id),
               'has-alert': !!conceptAlertById(c.id),
@@ -49,52 +41,73 @@
             }"
             @click="goConcept(c.id)"
           >
-            <div class="cell name">
-              <el-tooltip :content="c.name" placement="top" effect="dark">
-                <div class="name-main">{{ shortDisplayName(c.name) }}</div>
-              </el-tooltip>
-              <el-tooltip
-                v-if="conceptAlertById(c.id)"
-                :content="conceptAlertText(c.id)"
-                placement="top-start"
-                effect="dark"
-              >
-                <div v-if="conceptAlertLines(c.id).length" class="alert-lines">
-                  <div
-                    v-for="line in conceptAlertLines(c.id)"
-                    :key="`${c.id}-${line.code}`"
-                    class="alert-chip"
-                    :class="alertChipClass(line)"
+            <div class="fav-main">
+              <div class="fav-main-top">
+                <div class="cell name">
+                  <el-tooltip :content="c.name" placement="top" effect="dark">
+                    <div class="name-main">{{ c.name }}</div>
+                  </el-tooltip>
+                  <el-tooltip
+                    v-if="conceptAlertById(c.id)"
+                    :content="conceptAlertText(c.id)"
+                    placement="top-start"
+                    effect="dark"
                   >
-                    {{ line.text }}
-                  </div>
+                    <div v-if="conceptAlertLines(c.id).length" class="alert-lines alert-lines--inline">
+                      <div
+                        v-for="line in conceptAlertLines(c.id)"
+                        :key="`${c.id}-${line.code}`"
+                        class="alert-chip"
+                        :class="alertChipClass(line)"
+                      >
+                        {{ line.text }}
+                      </div>
+                    </div>
+                  </el-tooltip>
                 </div>
-              </el-tooltip>
+                <span v-if="c.editable" class="fav-tag">自定义</span>
+              </div>
+
+              <div class="fav-metrics">
+                <div class="metric-row">
+                  <span class="metric-label">涨跌幅</span>
+                  <span class="num" :class="chgClass(c.change)">
+                    <span class="arrow">{{ arrow(c.change) }}</span>
+                    {{ fmtPctAbs(c.change) }}
+                  </span>
+                </div>
+
+                <div class="metric-row">
+                  <span class="metric-label">净流入</span>
+                  <span class="num" :class="moneyClass(c.netInflow)">
+                    {{ fmtMoneySigned(c.netInflow) }}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div class="cell mid">
-              <span class="num" :class="chgClass(c.change)">
-                <span class="arrow">{{ arrow(c.change) }}</span>
-                {{ fmtPctAbs(c.change) }}
-              </span>
-            </div>
-
-            <div class="cell right">
-              <span class="num" :class="moneyClass(c.netInflow)">
-                {{ fmtMoneySigned(c.netInflow) }}
-              </span>
-            </div>
-            <div class="cell op">
-              <el-tooltip content="取消收藏" placement="top" effect="dark">
-                <el-button link class="op-icon-btn op-icon-btn--cancel" @click.stop="unfavoriteConcept(c)">
-                  <el-icon class="icon-fav"><StarFilled /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip v-if="c.editable" content="编辑概念" placement="top" effect="dark">
-                <el-button link class="op-icon-btn op-icon-btn--edit" @click.stop="editConceptFromSidebar(c)">
-                  <el-icon class="icon-edit"><EditPen /></el-icon>
-                </el-button>
-              </el-tooltip>
+            <div class="fav-actions" @click.stop>
+              <el-button class="btn-act" size="small" plain type="primary" @click="goConcept(c.id)">
+                查看
+              </el-button>
+              <el-button
+                v-if="c.editable"
+                class="btn-act"
+                size="small"
+                plain
+                @click="editConceptFromSidebar(c)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                class="btn-act"
+                size="small"
+                plain
+                type="danger"
+                @click="unfavoriteConcept(c)"
+              >
+                删除
+              </el-button>
             </div>
           </div>
 
@@ -125,19 +138,11 @@
           
          </div>
 
-        <div class="fav-table-head">
-          <span class="h-name">股票</span>
-          <span class="h-mid">涨跌幅</span>
-          <span class="h-right">涨跌额</span>
-          <span class="h-op">操作</span>
-        </div>
-
-        <!-- ✅ 内部滚动 -->
         <div class="fav-list scroll-hidden">
           <div
             v-for="s in myStockEnriched"
             :key="s.code"
-            class="row"
+            class="fav-item"
             :class="{
               active: isStockRouteActive(s.code),
               'signal-buy': s.tradeAction === 'buy',
@@ -147,56 +152,74 @@
             }"
             @click="goStock(s.code)"
           >
-            <div class="cell name">
-              <el-tooltip :content="s.name" placement="top" effect="dark">
-                <div class="name-main">{{ shortDisplayName(s.name) }}</div>
-              </el-tooltip>
-              <div class="name-sub">{{ s.code || '--' }}</div>
-              <el-tooltip
-                v-if="stockAlertByCode(s.code)"
-                :content="stockAlertText(s.code)"
-                placement="top-start"
-                effect="dark"
-              >
-                <div v-if="stockAlertLines(s.code).length" class="alert-lines">
-                  <div
-                    v-for="line in stockAlertLines(s.code)"
-                    :key="`${s.code}-${line.code}`"
-                    class="alert-chip"
-                    :class="alertChipClass(line)"
+            <div class="fav-main">
+              <div class="fav-main-top">
+                <div class="cell name">
+                  <el-tooltip :content="`${s.name} ${s.code || '--'}`" placement="top" effect="dark">
+                    <div class="name-main">
+                      <span class="name-main-text">{{ s.name }}</span>
+                      <span class="name-inline-code">{{ s.code || '--' }}</span>
+                    </div>
+                  </el-tooltip>
+                  <el-tooltip
+                    v-if="stockAlertByCode(s.code)"
+                    :content="stockAlertText(s.code)"
+                    placement="top-start"
+                    effect="dark"
                   >
-                    {{ line.text }}
+                    <div v-if="stockAlertLines(s.code).length" class="alert-lines alert-lines--inline">
+                      <div
+                        v-for="line in stockAlertLines(s.code)"
+                        :key="`${s.code}-${line.code}`"
+                        class="alert-chip"
+                        :class="alertChipClass(line)"
+                      >
+                        {{ line.text }}
+                      </div>
+                    </div>
+                  </el-tooltip>
+                  <div
+                    v-if="appliedTradeStrategy"
+                    class="trade-signal"
+                    :class="`sig-${s.tradeAction || 'hold'}`"
+                    :title="s.tradeReason || ''"
+                  >
+                    {{ tradeSignalText(s.tradeAction) }} {{ Number.isFinite(s.tradeScore) ? `(${s.tradeScore})` : '' }}
                   </div>
                 </div>
-              </el-tooltip>
-             <div
-                v-if="appliedTradeStrategy"
-                class="trade-signal"
-                :class="`sig-${s.tradeAction || 'hold'}`"
-                :title="s.tradeReason || ''"
-              >
-                {{ tradeSignalText(s.tradeAction) }} {{ Number.isFinite(s.tradeScore) ? `(${s.tradeScore})` : '' }}
+              </div>
+
+              <div class="fav-metrics">
+                <div class="metric-row">
+                  <span class="metric-label">涨跌幅</span>
+                  <span class="num" :class="chgClass(s.change)">
+                    <span class="arrow">{{ arrow(s.change) }}</span>
+                    {{ fmtPctSigned(s.change) }}
+                  </span>
+                </div>
+
+                <div class="metric-row">
+                  <span class="metric-label">涨跌额</span>
+                  <span class="num" :class="moneyClass(s.changeAmount)">
+                    {{ fmtPriceSigned(s.changeAmount) }}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div class="cell mid">
-              <span class="num" :class="chgClass(s.change)">
-                <span class="arrow">{{ arrow(s.change) }}</span>
-                {{ fmtPctSigned(s.change) }}
-              </span>
-            </div>
-
-            <div class="cell right">
-              <span class="num" :class="moneyClass(s.changeAmount)">
-                {{ fmtPriceSigned(s.changeAmount) }}
-              </span>
-            </div>
-            <div class="cell op">
-              <el-tooltip content="取消收藏" placement="top" effect="dark">
-                <el-button link class="op-icon-btn op-icon-btn--cancel" @click.stop="unfavoriteStock(s.code)">
-                  <el-icon class="icon-fav"><StarFilled /></el-icon>
-                </el-button>
-              </el-tooltip>
+            <div class="fav-actions" @click.stop>
+              <el-button class="btn-act" size="small" plain type="primary" @click="goStock(s.code)">
+                查看
+              </el-button>
+              <el-button
+                class="btn-act"
+                size="small"
+                plain
+                type="danger"
+                @click="unfavoriteStock(s.code)"
+              >
+                删除
+              </el-button>
             </div>
           </div>
 
@@ -323,7 +346,7 @@ import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useAlertCenterStore } from '@/stores/alertCenter'
 import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
-import { HomeFilled, Tickets, EditPen, StarFilled, Star, Delete, ArrowRight } from '@element-plus/icons-vue'
+import { HomeFilled, Tickets, StarFilled, Star, Delete, ArrowRight } from '@element-plus/icons-vue'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 import { ElMessage } from 'element-plus'
 
@@ -406,12 +429,6 @@ function normalizeCode(raw) {
 }
 
 /** 自选股票：名称/代码 + 涨跌幅/涨跌额 */
-const shortDisplayName = (name) => {
-  const s = String(name ?? '')
-  if (s.length <= 4) return s
-  return `${s.slice(0, 2)}..${s.slice(-1)}`
-}
-
 const myStockCodesSafe = computed(() => {
   const list = stockStore?.myStockCodes
   return Array.isArray(list) ? list : []
@@ -855,8 +872,8 @@ const fmtMoneySigned = (v) => {
 
 /* ✅ 自选区：外层不滚动，给内部列表滚动空间 */
 .fav-wrap{
-  --concept-card-height: 360px;
-  --stock-card-height: 360px;
+  --concept-card-height: 400px;
+  --stock-card-height: 400px;
   padding: 4px 8px 0;
   display: grid;
   grid-template-rows: var(--concept-card-height) var(--stock-card-height);
@@ -917,37 +934,14 @@ const fmtMoneySigned = (v) => {
 }
 
 /* 表头 */
-.fav-table-head{
-  height: 27px;
-  padding: 0 11px;
-  display:grid;
-  grid-template-columns: minmax(0, 1fr) 95px 60px 46px;
-  column-gap: 4px;
-  align-items:center;
-  color:#7f8ba2;
-  font-size: 12px;
-  font-weight: 800;
-  background: #f2f6fb;
-  border-bottom: 1px solid #e2e9f3;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-.h-mid, .h-right, .h-op{
-  text-align:right;
-  white-space: nowrap;
-}
-.h-name{
-  min-width: 0;
-  white-space: nowrap;
-  letter-spacing: 0;
-}
-
-/* 列表 */
 .fav-list{
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 2px 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .fav-foot{
   flex-shrink: 0;
@@ -970,43 +964,121 @@ const fmtMoneySigned = (v) => {
   background: rgba(47, 128, 237, .12);
 }
 
-/* 行 */
-.row{
-  display:grid;
-  grid-template-columns: minmax(0, 1fr) 112px 58px 46px;
-  column-gap: 6px;
-  align-items:center;
-  padding: 10px 10px;
-  border-radius: 0;
+/* 卡片 */
+.fav-item{
+  background:#fff;
+  border-radius: 12px;
+  border: 1px solid rgba(148,163,184,.24);
+  box-shadow: 0 6px 12px rgba(15,23,42,.04);
+  min-height: 126px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
   cursor: pointer;
   transition: .12s ease;
   box-sizing: border-box;
+  overflow: hidden;
 }
-.row + .row{
-  border-top: 1px solid #e9eff7;
+.fav-item:hover{
+  border-color: rgba(64,158,255,.24);
+  box-shadow: 0 10px 18px rgba(15,23,42,.08);
 }
-.row:hover{ background: rgba(47,128,237,.05); }
-.row.active{
-  background: rgba(47,128,237,.08);
-  outline: none;
+.fav-item.active{
+  box-shadow: inset 0 0 0 1px rgba(64,158,255,.28);
+  background: rgba(47,128,237,.03);
 }
-.row.signal-buy{
-  background: rgba(245,108,108,.06);
+.fav-item.signal-buy{
+  border-left: 3px solid rgba(245,108,108,.72);
 }
-.row.signal-sell{
-  background: rgba(103,194,58,.06);
+.fav-item.signal-sell{
+  border-left: 3px solid rgba(103,194,58,.8);
+}
+.fav-main{
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px 10px 8px;
+}
+.fav-main-top{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fav-tag{
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0f766e;
+  background: rgba(45,212,191,.12);
+  border: 1px solid rgba(45,212,191,.34);
+}
+.fav-metrics{
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+.metric-row{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.metric-label{
+  font-size: 12px;
+  color: #607d8b;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.fav-actions{
+  border-top: 1px dashed rgba(148,163,184,.32);
+  padding: 8px;
+  display:flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.btn-act{
+  height: 26px !important;
+  width: auto;
+  padding: 0 8px !important;
+  border-radius: 10px !important;
+  font-weight: 700;
+  font-size: 12px;
 }
 
 /* 名称 */
 .name-main{
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   color: #1f2d3d;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
-  min-width: 4em;
+  min-width: 0;
+  max-width: 100%;
+}
+.name-main-text{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.name-inline-code{
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #6f7f99;
+  font-weight: 700;
+  letter-spacing: .2px;
 }
 .name-sub{
   margin-top: 3px;
@@ -1034,9 +1106,16 @@ const fmtMoneySigned = (v) => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 1px;
   width: 100%;
   min-width: 0;
+}
+.alert-lines--inline{
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow: hidden;
 }
 .alert-chip{
   display: flex;
@@ -1046,8 +1125,8 @@ const fmtMoneySigned = (v) => {
   max-width: none;
   min-width: fit-content;
   padding: 0;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
   line-height: 1.45;
   white-space: nowrap;
   overflow: visible;
@@ -1072,15 +1151,6 @@ const fmtMoneySigned = (v) => {
   justify-content: center;
   align-items: flex-start;
   min-width: 0;
-}
-.cell.mid, .cell.right{ text-align:right; }
-.cell.mid, .cell.right{
-  min-width: 0;
-  overflow: hidden;
-}
-.cell.op{
-  justify-content: flex-end;
-  display: flex;
 }
 .op-icon-btn{
   margin: 0;
