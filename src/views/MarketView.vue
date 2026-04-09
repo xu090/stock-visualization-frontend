@@ -89,6 +89,7 @@
           </div>
         </div>
 <!-- 成分股列表 -->
+        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" />
         <div class="panel-card table-panel">
           <div class="panel-title">成分股列表</div>
 
@@ -185,10 +186,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick, defineProps } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
+import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 
@@ -196,8 +198,6 @@ const props = defineProps({
   forcedConceptId: { type: String, default: '' },
   embedded: { type: Boolean, default: false }
 })
-const emit = defineEmits(['closeEmbedded', 'update:forcedConceptId'])
-
 const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
@@ -348,6 +348,7 @@ const leaderStock = computed(() => {
   if (!list.length) return null
   return list.sort((a, b) => Number(b.change) - Number(a.change))[0]
 })
+
 
 /** ===== 你原来的 9 宫格 & 图表（保持 mock）===== */
 const klinePeriod = ref('1m')
