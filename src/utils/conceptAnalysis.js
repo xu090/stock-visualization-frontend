@@ -84,7 +84,8 @@ function generateTrendSeries(seed, days = 30, options = {}) {
     close,
     ma5: calcMa(close, 5),
     ma10: calcMa(close, 10),
-    ma20: calcMa(close, 20)
+    ma20: calcMa(close, 20),
+    ma30: calcMa(close, 30)
   }
 }
 
@@ -104,7 +105,8 @@ function buildStockSeriesFromConcept(conceptSeries, stockSeed) {
     close: closes,
     ma5: calcMa(closes, 5),
     ma10: calcMa(closes, 10),
-    ma20: calcMa(closes, 20)
+    ma20: calcMa(closes, 20),
+    ma30: calcMa(closes, 30)
   }
 }
 

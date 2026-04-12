@@ -89,9 +89,69 @@
           </div>
         </div>
 <!-- 成分股列表 -->
-        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" />
-        <div class="panel-card table-panel">
+        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" v-model:analysisWindow="analysisWindow" />
+        <ConceptStockMergedTable :concept="concept" :stocks="stocks" :analysis-window="analysisWindow" />
+        <div v-if="false" class="panel-card table-panel">
           <div class="panel-title">成分股列表</div>
+
+          <div class="panel-header table-head">
+            <div class="panel-title">成分股列表</div>
+          </div>
+
+          <div class="table-filter-bar">
+            <el-input
+              v-model="query.keyword"
+              size="small"
+              clearable
+              placeholder="搜索股票名称/代码"
+              style="width: 220px"
+            />
+            <el-select
+              v-model="query.correlation"
+              size="small"
+              placeholder="相关性"
+              style="width: 130px"
+            >
+              <el-option label="相关性全部" value="" />
+              <el-option label="正相关" value="strong-positive" />
+              <el-option label="弱相关" value="weak-positive" />
+              <el-option label="不相关" value="neutral" />
+              <el-option label="负相关" value="negative" />
+            </el-select>
+            <el-select
+              v-model="query.direction"
+              size="small"
+              placeholder="涨跌方向"
+              style="width: 120px"
+            >
+              <el-option label="涨跌全部" value="" />
+              <el-option label="上涨" value="up" />
+              <el-option label="下跌" value="down" />
+              <el-option label="震荡" value="flat" />
+            </el-select>
+            <el-select
+              v-model="query.maPattern"
+              size="small"
+              placeholder="均线形态"
+              style="width: 150px"
+            >
+              <el-option label="均线形态全部" value="" />
+              <el-option v-for="item in maPatternOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+            <el-button size="small" plain @click="resetFilters">重置筛选</el-button>
+          </div>
+
+          <div class="table-tags">
+            <el-tag
+              v-for="item in analysisPayload.stocks.slice(0, 6)"
+              :key="item.code"
+              size="small"
+              effect="plain"
+              :type="item.correlationType"
+            >
+              {{ item.name }} {{ item.roleLabel }}
+            </el-tag>
+          </div>
 
           <el-table
             :data="sortedStocks"
@@ -176,9 +236,6 @@
             </el-table-column>
           </el-table>
 
-          <div class="table-tip">
-            提示：点击任意一行进入股票详情页（用于后续做个股看板/策略对比）。
-          </div>
         </div>
       </div>
     </div>
@@ -186,11 +243,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick, defineProps } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick, defineProps } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
+import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
+import { buildConceptAnalysisPayload } from '@/utils/conceptAnalysis'
 import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 
@@ -268,6 +327,35 @@ const stocks = computed(() => {
 })
 
 /** ✅ 默认按涨跌幅降序 */
+const analysisWindow = ref(30)
+const query = reactive({
+  keyword: '',
+  correlation: '',
+  direction: '',
+  maPattern: ''
+})
+const maPatternOptions = [
+  { label: '多头排列', value: 'bullish-stack' },
+  { label: '空头排列', value: 'bearish-stack' },
+  { label: '黄金交叉', value: 'golden-cross' },
+  { label: '死亡交叉', value: 'death-cross' },
+  { label: '均线缠绕', value: 'mixed' }
+]
+const analysisPayload = computed(() => buildConceptAnalysisPayload(concept.value, stocks.value, { days: analysisWindow.value }))
+const filteredAnalysisStocks = computed(() => {
+  const keyword = query.keyword.trim().toLowerCase()
+  return analysisPayload.value.stocks.filter((item) => {
+    if (keyword) {
+      const text = `${item.name || ''} ${item.code || ''}`.toLowerCase()
+      if (!text.includes(keyword)) return false
+    }
+    if (query.correlation && item.correlationCategory !== query.correlation) return false
+    if (query.direction && item.trendDirection !== query.direction) return false
+    if (query.maPattern && item.maPatternKey !== query.maPattern) return false
+    return true
+  })
+})
+
 const sortState = ref({ prop: 'change', order: 'descending' })
 const defaultSort = computed(() => ({ prop: sortState.value.prop, order: sortState.value.order }))
 
@@ -277,7 +365,7 @@ const toNum = (v) => {
 }
 
 const sortedStocks = computed(() => {
-  const list = (stocks.value || []).slice()
+  const list = (filteredAnalysisStocks.value || []).slice()
   const { prop, order } = sortState.value
   if (!prop || !order) return list
   const dir = order === 'ascending' ? 1 : -1
@@ -292,6 +380,13 @@ const sortedStocks = computed(() => {
 
 const onSortChange = ({ prop, order }) => {
   sortState.value = { prop, order }
+}
+
+const resetFilters = () => {
+  query.keyword = ''
+  query.correlation = ''
+  query.direction = ''
+  query.maPattern = ''
 }
 
 const goStock = (row) => {
@@ -530,7 +625,6 @@ onBeforeUnmount(() => {
 .chg .arrow{ font-size:14px; line-height:1; }
 .up{ color:#f56c6c; }
 .down{ color:#67c23a; }
-.table-tip{ margin-top:10px; font-size:12px; color:#909399; }
 /* 添加收藏按钮的样式 */
 .fav-icon {
   font-size: 18px;
