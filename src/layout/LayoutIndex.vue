@@ -4,7 +4,7 @@
       <Header />
     </el-header>
 
-    <el-container class="layout-body">
+    <el-container class="layout-body" :style="layoutBodyStyle">
       <el-aside width="284px" class="layout-aside layout-aside-left" id="tour-sidebar">
         <div class="aside-inner">
           <div class="aside-nav">
@@ -25,13 +25,10 @@
         </div>
       </el-main>
 
-      <el-aside width="284px" class="layout-aside layout-aside-right">
+      <el-aside v-if="showStrategy" width="248px" class="layout-aside layout-aside-right">
         <div class="right-inner">
           <div class="right-strategy" id="tour-strategy">
             <StrategyDock />
-          </div>
-          <div class="right-plan" id="tour-plan">
-            <InvestmentPlanDock />
           </div>
         </div>
       </el-aside>
@@ -43,7 +40,6 @@
 import Header from './Header.vue'
 import Sidebar from './Sidebar.vue'
 import StrategyDock from './StrategyDock.vue'
-import InvestmentPlanDock from './InvestmentPlanDock.vue'
 import NewsPanel from '@/components/NewsPanel.vue'
 
 export default {
@@ -52,7 +48,6 @@ export default {
     Header,
     Sidebar,
     StrategyDock,
-    InvestmentPlanDock,
     NewsPanel
   },
   data() {
@@ -61,6 +56,15 @@ export default {
     }
   },
   computed: {
+    showStrategy() {
+      const p = this.$route.path || ''
+      return p === '/home'
+    },
+    layoutBodyStyle() {
+      return {
+        gridTemplateColumns: this.showStrategy ? '284px 1fr 248px' : '284px 1fr'
+      }
+    },
     showNews() {
       const p = this.$route.path || ''
       return (
@@ -108,7 +112,6 @@ export default {
   height: calc(100vh - var(--header-height));
   overflow: hidden;
   display: grid;
-  grid-template-columns: 284px 1fr 284px;
   background: #f4f7fb;
 }
 
@@ -143,21 +146,16 @@ export default {
 .right-inner{
   height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1.3fr) minmax(0, 1.2fr);
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
   padding: 6px;
 }
-.right-strategy,
-.right-plan{
+.right-strategy{
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   display: flex;
   justify-content: stretch;
-}
-.right-plan{
-  padding-top: 10px;
-  border-top: 1px solid #cfd8e5;
 }
 
 .layout-main{

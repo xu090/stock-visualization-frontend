@@ -3,7 +3,7 @@
     <!-- 顶部：标题 + 保存入口 -->
     <div class="strategy-header">
       <div class="h-top">
-        <span class="strategy-title">交易策略</span>
+        <span class="strategy-title">筛选策略</span>
 
         <div class="h-top-actions" id="tour-strategy-save">
           <el-button size="small" plain type="success" @click="allDialogVisible = true">
@@ -11,66 +11,134 @@
           </el-button>
         </div>
       </div>
-
-      <!-- 当前应用 -->
-      <div class="h-current" id="tour-strategy-current">
-        <div class="cur-row">
-          <span class="cur-label">选股</span>
-          <span
-            class="cur-name"
-            :class="{ clickable: !!currentAppliedSelectId }"
-            :title="currentAppliedSelectName || '无'"
-            @click="jumpToApplied('select')"
-          >
-            {{ currentAppliedSelectName || '无' }}
-          </span>
-          <el-button
-            class="btn-mini btn-clear"
-            size="small"
-            plain
-            :disabled="!currentAppliedSelectId"
-            @click="clearApplied('select')"
-          >
-            清空
-          </el-button>
-        </div>
-
-        <div class="cur-row">
-          <span class="cur-label">交易</span>
-          <span
-            class="cur-name"
-            :class="{ clickable: !!currentAppliedTradeId }"
-            :title="currentAppliedTradeName || '无'"
-            @click="jumpToApplied('trade')"
-          >
-            {{ currentAppliedTradeName || '无' }}
-          </span>
-          <el-button
-            class="btn-mini btn-clear"
-            size="small"
-            plain
-            :disabled="!currentAppliedTradeId"
-            @click="clearApplied('trade')"
-          >
-            清空
-          </el-button>
-        </div>
-      </div>
     </div>
 
     <!-- 列表区域 -->
     <div class="strategy-body scroll-hidden" ref="bodyRef">
-      <!-- 选股策略 -->
-      <div class="section">
-        <div class="section-head">
-          <span class="section-title">筛选策略</span>
-          <span class="section-sub">收藏 {{ selectFavoriteCount }} / 自定义{{ selectCustomCount }}</span>
+      <div v-if="hasVisibleSelectStrategies" class="section-group">
+        <div v-if="selectFavoriteStrategies.length" class="section">
+          <div class="section-head">
+            <span class="section-title">收藏策略</span>
+          </div>
+
+          <div class="strategy-list">
+            <el-popover
+              v-for="s in selectFavoriteStrategies"
+              :key="`sel-fav-${s.id}`"
+              placement="right-start"
+              :width="360"
+              trigger="click"
+              :show-arrow="true"
+              :popper-options="fixedPopperOptions"
+              :popper-class="'strategy-popover'"
+              @show="setActivePopover('select', s, getSelEl(s.id))"
+              @hide="clearActivePopover"
+            >
+              <template #reference>
+                <div
+                  class="strategy-item"
+                  :ref="(el) => setSelRef(s.id, el)"
+                  :class="{
+                    applied: s.id === currentAppliedSelectId
+                  }"
+                >
+                  <div class="s-main">
+                    <div class="s-line1">
+                      <span class="s-name" :title="s.name">{{ s.name }}</span>
+                      <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
+                      <span v-if="s.id === currentAppliedSelectId" class="badge">应用</span>
+                      <button
+                        class="star-btn"
+                        type="button"
+                        :title="s.isFavorite ? '取消收藏' : '收藏'"
+                        @click.stop="toggleFavorite('select', s)"
+                      >
+                        <el-icon class="star-icon" :class="{ on: s.isFavorite }">
+                          <StarFilled v-if="s.isFavorite" />
+                          <Star v-else />
+                        </el-icon>
+                      </button>
+                    </div>
+
+                    <div class="s-line2" v-if="s.snapshot">
+                      <span class="mini">排序</span>
+                      <span class="val">{{ metricsTextShort(s.snapshot) }}</span>
+                    </div>
+                    <div class="s-line2" v-if="s.snapshot">
+                      <span class="mini">筛选</span>
+                      <span class="val">{{ filtersTextShort(s.snapshot) }}</span>
+                    </div>
+                    <div class="s-line2" v-if="!s.snapshot">
+                      <span class="val">无快照</span>
+                    </div>
+                  </div>
+
+                  <div class="s-actions" @click.stop>
+                    <el-button
+                      class="btn-act"
+                      size="small"
+                      type="primary"
+                      :plain="s.id !== currentAppliedSelectId"
+                      @click="toggleApply('select', s)"
+                    >
+                      {{ s.id === currentAppliedSelectId ? '取消' : '应用' }}
+                    </el-button>
+
+                    <el-button class="btn-act" size="small" plain @click="openEdit('select', s)">
+                      编辑
+                    </el-button>
+
+                    <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe('select', s)">
+                      删除
+                    </el-button>
+                  </div>
+                </div>
+              </template>
+
+              <div class="pop-body" v-if="activeStrategy">
+                <div class="pop-title">筛选策略：{{ activeStrategy.name }}</div>
+
+                <div class="pop-grid">
+                  <div class="pop-row" v-if="activeStrategy.desc">
+                    <div class="k">描述</div>
+                    <div class="v">{{ activeStrategy.desc }}</div>
+                  </div>
+
+                  <div class="pop-row">
+                    <div class="k">排序</div>
+                    <div class="v">{{ detailSortText }}</div>
+                  </div>
+
+                  <div class="pop-row">
+                    <div class="k">筛选</div>
+                    <div class="v">{{ detailFilterText }}</div>
+                  </div>
+                </div>
+
+                <div class="pop-actions">
+                  <el-button size="small" @click="closeActivePopover()">关闭</el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :disabled="activeApplyDisabled"
+                    @click="applyFromPopoverAndClose()"
+                  >
+                    {{ activeApplyText }}
+                  </el-button>
+                </div>
+              </div>
+            </el-popover>
+          </div>
         </div>
 
-        <div class="strategy-list" v-if="selectMineStrategies.length">
+        <div class="section-head">
+          <span class="section-title">自定义策略</span>
+        </div>
+
+        <div class="strategy-list" v-if="selectCustomStrategies.length">
           <el-popover
-            v-for="s in selectMineStrategies"
-            :key="`sel-${s.id}`"
+            v-for="s in selectCustomStrategies"
+            :key="`sel-custom-${s.id}`"
             placement="right-start"
             :width="360"
             trigger="click"
@@ -181,81 +249,13 @@
         </div>
 
         <div v-else class="empty-trade">
-          <div class="empty-title">暂无筛选策略</div>
-          <div class="empty-sub">当前仅展示“收藏”或“自定义”策略，可在“全部策略”中收藏。</div>
+          <div class="empty-title">暂无自定义策略</div>
         </div>
       </div>
 
-      <!-- 交易策略 -->
-      <div class="section">
-        <div class="section-head">
-          <span class="section-title">交易策略</span>
-        </div>
-
-        <div class="strategy-list" v-if="tradeMineStrategies.length">
-          <div
-            v-for="s in tradeMineStrategies"
-            :key="`tr-${s.id}`"
-            class="strategy-item"
-            :ref="(el) => setTrRef(s.id, el)"
-            :class="{
-              applied: s.id === currentAppliedTradeId
-            }"
-            @click="openTradeDetail(s)"
-          >
-            <div class="s-main">
-              <div class="s-line1">
-                <span class="s-name" :title="s.name">{{ s.name }}</span>
-                <span v-if="s.isCustom" class="tag custom inline-tag">自定义</span>
-                <span v-if="s.id === currentAppliedTradeId" class="badge">应用</span>
-                <button
-                  class="star-btn"
-                  type="button"
-                  :title="s.isFavorite ? '取消收藏' : '收藏'"
-                  @click.stop="toggleFavorite('trade', s)"
-                >
-                  <el-icon class="star-icon" :class="{ on: s.isFavorite }">
-                    <StarFilled v-if="s.isFavorite" />
-                    <Star v-else />
-                  </el-icon>
-                </button>
-              </div>
-
-              <div class="s-line2 s-desc" v-if="s.desc">
-                <span class="mini">描述</span>
-                <span class="val" :title="s.desc">{{ s.desc }}</span>
-              </div>
-              <div class="s-line2" v-if="!s.snapshot">
-                <span class="val">无快照</span>
-              </div>
-            </div>
-
-            <div class="s-actions" @click.stop>
-              <el-button
-                class="btn-act"
-                size="small"
-                type="primary"
-                :plain="s.id !== currentAppliedTradeId"
-                @click="toggleApply('trade', s)"
-              >
-                {{ s.id === currentAppliedTradeId ? '取消' : '应用' }}
-              </el-button>
-
-              <el-button class="btn-act" size="small" plain @click="openEdit('trade', s)">
-                编辑
-              </el-button>
-
-              <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe('trade', s)">
-                删除
-              </el-button>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="empty-trade">
-          <div class="empty-title">暂无交易策略</div>
-          <div class="empty-sub">后续可在这里保存：买点 / 卖点 / 止损止盈 / 仓位等，也可在“全部策略”中收藏。</div>
-        </div>
+      <div v-else class="empty-trade">
+        <div class="empty-title">暂无筛选策略</div>
+        <div class="empty-sub">可在“全部策略”中收藏，或新建自定义策略。</div>
       </div>
 
     </div>
@@ -497,23 +497,31 @@ const currentAppliedTradeName = computed(() => {
   return strategyStore.tradeStrategies.find(x => x.id === id)?.name || ''
 })
 
-const selectMineStrategies = computed(() =>
-  (strategyStore.selectStrategies || [])
-    .filter(s => s.isFavorite || s.isCustom)
-    .slice()
-    .sort((a, b) => Number(!!b.isFavorite) - Number(!!a.isFavorite))
-)
+const moveAppliedToTop = (list = [], appliedId = null) => {
+  const rows = Array.isArray(list) ? list.slice() : []
+  if (!appliedId) return rows
+  const index = rows.findIndex(item => item?.id === appliedId)
+  if (index <= 0) return rows
+  const [applied] = rows.splice(index, 1)
+  rows.unshift(applied)
+  return rows
+}
+const selectFavoriteStrategies = computed(() => {
+  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isFavorite)
+  return moveAppliedToTop(list, currentAppliedSelectId.value)
+})
+const selectCustomStrategies = computed(() => {
+  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isCustom && !s.isFavorite)
+  return moveAppliedToTop(list, currentAppliedSelectId.value)
+})
+const hasVisibleSelectStrategies = computed(() => {
+  return selectFavoriteStrategies.value.length > 0 || selectCustomStrategies.value.length > 0
+})
 const tradeMineStrategies = computed(() =>
   (strategyStore.tradeStrategies || [])
     .filter(s => s.isFavorite || s.isCustom)
     .slice()
     .sort((a, b) => Number(!!b.isFavorite) - Number(!!a.isFavorite))
-)
-const selectFavoriteCount = computed(() =>
-  (strategyStore.selectStrategies || []).filter(s => !!s.isFavorite).length
-)
-const selectCustomCount = computed(() =>
-  (strategyStore.selectStrategies || []).filter(s => !!s.isCustom).length
 )
 
 /** Home 快照（用于创建筛选策略） */
@@ -564,7 +572,7 @@ const applyStrategy = (type, s) => {
     currentAppliedSelectId.value = s.id
   } else {
     currentAppliedTradeId.value = s.id
-    ElMessage.success(`已应用：${s.name}。可在“交易方案”中按股票生成和调整方案`)
+    ElMessage.success(`已应用：${s.name}`)
     return
   }
   ElMessage.success(`已应用：${s.name}`)
@@ -1052,7 +1060,6 @@ const buildFilterParts = (f) => {
   flex-direction: column;
   gap: 6px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(148,163,184,.22);
 }
 
 .h-top{
@@ -1077,43 +1084,6 @@ const buildFilterParts = (f) => {
   align-items: center;
   gap: 6px;
   margin: 0;
-}
-
-.h-current{
-  display:flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(0,0,0,.03);
-  border: 1px solid rgba(0,0,0,.06);
-}
-.cur-row{
-  display:flex;
-  align-items:center;
-  gap: 6px;
-}
-.cur-label{
-  flex: 0 0 30px;
-  font-size: 12px;
-  font-weight: 900;
-  color:#6b7280;
-}
-.cur-name{
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 900;
-  color:#111827;
-  overflow:hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cur-name.clickable{
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
 }
 
 .btn-mini{
@@ -1148,17 +1118,37 @@ const buildFilterParts = (f) => {
 }
 
 /* 分段 */
-.section{ margin-bottom: 10px; }
+.section-group{
+  display:flex;
+  flex-direction:column;
+  gap: 12px;
+}
+.section{ margin-bottom: 0; }
 .section-head{
   display:flex;
-  align-items:baseline;
-  justify-content: space-between;
+  align-items:center;
+  justify-content:flex-start;
   padding: 3px 2px 7px;
 }
 .section-title{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding-left: 10px;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   color:#374151;
+}
+.section-title::before{
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 14px;
+  border-radius: 999px;
+  background: #409eff;
+  transform: translateY(-50%);
 }
 .section-sub{
   font-weight: 700;
