@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
-import { useStrategyStore } from '@/stores/strategy'
-import { useHomeFilterStore } from '@/stores/homeFilter'
 import { evaluateConceptAlert, evaluateStockAlert } from '@/utils/alertEngine'
 
 const normalizeCode = (raw) => {
@@ -16,69 +14,6 @@ const normalizeCode = (raw) => {
 const targetKey = (type, id) => `${type}:${id}`
 
 const removeTargetAlerts = (alerts, type, id) => alerts.filter(x => !(x.targetType === type && String(x.targetId) === String(id)))
-
-const createDemoTradeSnapshot = () => ({
-  metadata: {
-    strategyType: 'trend',
-    marketScope: 'A-share',
-    instrumentType: 'stock',
-    timeframe: '1d',
-    linkedStockCodes: [],
-    linkedConceptIds: []
-  },
-  dataBinding: {
-    source: 'stockStore.quotesByCode',
-    fields: ['changePercent', 'netInflow', 'mainInflow']
-  },
-  entry: {
-    expression: '',
-    triggerMode: 'close',
-    signalRefs: ['changePercent', 'netInflow'],
-    conditions: [
-      { field: 'changePercent', op: '>=', value: 1, connector: 'AND' },
-      { field: 'netInflow', op: '>', value: 0, connector: 'AND' }
-    ]
-  },
-  exit: {
-    takeProfitPct: 8,
-    stopLossPct: 3,
-    exitSignal: '',
-    conditions: [
-      { field: 'changePercent', op: '<', value: 0, connector: 'OR' },
-      { field: 'netInflow', op: '<', value: 0, connector: 'OR' }
-    ]
-  },
-  position: {
-    initialMode: 'percent',
-    initialValue: 20,
-    maxPositionPct: 60,
-    addPositionCondition: '',
-    addPositionMaxPct: 20,
-    reducePositionCondition: ''
-  },
-  risk: {
-    maxDrawdownPct: 12,
-    maxSingleLossPct: 3,
-    maxTradesPerDay: 3,
-    blacklist: {
-      excludeST: true,
-      excludeSmallCap: false,
-      minMarketCapYi: 50
-    }
-  },
-  params: {}
-})
-
-const createDemoSelectSnapshot = () => ({
-  scope: 'all',
-  searchQuery: '',
-  selectedMetrics: ['change', 'netInflow'],
-  filters: {
-    minChange: 1,
-    minNetInflowY: 0.1,
-    minUpRatio: 0.5
-  }
-})
 
 const buildDemoStockQuoteBaseline = (quote = {}, profile = 'reversal-and-drift') => {
   const currentChange = Number(quote.change ?? quote.changePercent ?? 0) || 0
@@ -152,6 +87,13 @@ export const useAlertCenterStore = defineStore('alertCenter', {
   },
 
   actions: {
+    clearTargetState(type, id) {
+      const key = targetKey(type, id)
+      delete this.baselineByTarget[key]
+      delete this.lastStateByTarget[key]
+      this.alerts = removeTargetAlerts(this.alerts, type, id)
+    },
+
     captureStockBaseline(code) {
       const c = normalizeCode(code)
       if (!c) return
@@ -159,12 +101,8 @@ export const useAlertCenterStore = defineStore('alertCenter', {
 
       const stockStore = useStockStore()
       const conceptStore = useConceptStore()
-      const strategyStore = useStrategyStore()
-      const homeFilter = useHomeFilterStore()
       const useDemoBaseline = !!stockStore.useMock
       const demoProfile = pickDemoStockProfile(stockStore.myStockCodes || [], c)
-      const appliedTradeId = homeFilter.appliedTradeStrategyId || null
-      const appliedTrade = (strategyStore.tradeStrategies || []).find(s => s.id === appliedTradeId) || null
       const currentQuote = stockStore.getStockByCodeEnriched?.(c) || {}
       const relatedConceptIds = (conceptStore.conceptList || [])
         .filter(cpt => (cpt.stockCodes || []).some(codeItem => normalizeCode(typeof codeItem === 'object' ? codeItem?.code : codeItem) === c))
@@ -177,11 +115,6 @@ export const useAlertCenterStore = defineStore('alertCenter', {
         quoteBaseline: useDemoBaseline
           ? buildDemoStockQuoteBaseline(currentQuote, demoProfile)
           : { ...currentQuote },
-        selectSnapshot: homeFilter.toSnapshot?.() || (useDemoBaseline ? createDemoSelectSnapshot() : null),
-        tradeStrategyId: appliedTradeId,
-        tradeSnapshot: appliedTrade?.snapshot
-          ? JSON.parse(JSON.stringify(appliedTrade.snapshot))
-          : (useDemoBaseline && demoProfile !== 'quiet' ? createDemoTradeSnapshot() : null),
         conceptIds: relatedConceptIds,
         simulationMode: useDemoBaseline ? demoProfile : 'live'
       }
@@ -202,7 +135,6 @@ export const useAlertCenterStore = defineStore('alertCenter', {
 
       const conceptStore = useConceptStore()
       const stockStore = useStockStore()
-      const homeFilter = useHomeFilterStore()
       const useDemoBaseline = !!stockStore.useMock
       const concept = conceptStore.getConceptById?.(sid)
       const metrics = (conceptStore.conceptOverviewAll || []).find(x => String(x.id) === sid) || concept || {}
@@ -211,7 +143,6 @@ export const useAlertCenterStore = defineStore('alertCenter', {
         type: 'concept',
         targetId: sid,
         createdAt: Date.now(),
-        selectSnapshot: homeFilter.toSnapshot?.() || (useDemoBaseline ? createDemoSelectSnapshot() : null),
         metricsBaseline: useDemoBaseline
           ? buildDemoConceptMetricsBaseline(metrics)
           : {
@@ -286,8 +217,7 @@ export const useAlertCenterStore = defineStore('alertCenter', {
         if (!quote) return
         const result = evaluateStockAlert({
           quote,
-          baseline,
-          tradeSnapshot: baseline?.tradeSnapshot || null
+          baseline
         })
         const prevSignature = this.lastStateByTarget[key]?.signature || ''
         if (result.signature && result.signature !== prevSignature) {
@@ -349,6 +279,20 @@ export const useAlertCenterStore = defineStore('alertCenter', {
       this.syncBaselines()
       this.scanStocks()
       this.scanConcepts()
+    },
+
+    resetStockBaseline(code) {
+      const c = normalizeCode(code)
+      if (!c) return
+      this.clearTargetState('stock', c)
+      this.captureStockBaseline(c)
+    },
+
+    resetConceptBaseline(id) {
+      const sid = String(id || '').trim()
+      if (!sid) return
+      this.clearTargetState('concept', sid)
+      this.captureConceptBaseline(sid)
     },
 
     markAlertRead(id) {

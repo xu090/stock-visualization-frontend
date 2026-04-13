@@ -367,6 +367,8 @@ export const useStockStore = defineStore('stock', {
       const c = normalizeCode(code)
       if (!c) return
       this.myStockCodes = this.myStockCodes.filter(x => x !== c)
+      const alertCenter = useAlertCenterStore()
+      alertCenter.clearTargetState('stock', c)
     }
   }
 })

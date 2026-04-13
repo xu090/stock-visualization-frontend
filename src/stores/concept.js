@@ -339,6 +339,8 @@ export const useConceptStore = defineStore('concept', {
       const idx = (this.conceptList || []).findIndex(c => normId(c.id) === id)
       if (idx < 0) return
       this.conceptList[idx].favorite = false
+      const alertCenter = useAlertCenterStore()
+      alertCenter.clearTargetState('concept', id)
     },
 
     /** ✅ 可选：一键切换收藏 */
@@ -351,6 +353,9 @@ export const useConceptStore = defineStore('concept', {
       if (this.conceptList[idx].favorite) {
         const alertCenter = useAlertCenterStore()
         alertCenter.captureConceptBaseline(id)
+      } else {
+        const alertCenter = useAlertCenterStore()
+        alertCenter.clearTargetState('concept', id)
       }
     },
 

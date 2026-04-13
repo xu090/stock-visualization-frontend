@@ -516,22 +516,15 @@ const formatAlertText = (alert) => {
 const stockAlertText = (code) => formatAlertText(stockAlertByCode(code))
 const conceptAlertText = (id) => formatAlertText(conceptAlertById(id))
 const shortenAlertText = (item) => {
-  const code = item?.code || ''
   const text = String(item?.text || '')
-  if (code === 'trade-drift' || code === 'select-drift') return '策略偏离'
-  if (code === 'price-reversal') return text.includes('转跌') ? '价格转跌' : '价格变涨'
-  if (code === 'concept-reversal') return text.includes('转跌') ? '概念转跌' : '概念变涨'
-  if (code === 'net-inflow-flip') return text.includes('流出') ? '资金转流出' : '资金转流入'
-  if (code === 'main-inflow-flip') return text.includes('流出') ? '主力转流出' : '主力转流入'
-  if (code === 'concept-inflow-flip') return text.includes('流出') ? '资金转流出' : '资金转流入'
+  if (text === 'price-up') return '价格变涨'
+  if (text === 'price-down') return '价格转跌'
   return text
 }
 const buildAlertLines = (alert) => {
   const items = Array.isArray(alert?.items) ? alert.items : []
   if (!items.length) return []
-  const nonStrategy = items.filter(item => !['trade-drift', 'select-drift'].includes(item.code))
-  const strategy = items.filter(item => ['trade-drift', 'select-drift'].includes(item.code))
-  return [...nonStrategy.slice(0, 1), ...strategy.slice(0, 1)].slice(0, 2).map(item => ({
+  return items.slice(0, 2).map(item => ({
     code: item.code,
     level: item.level || 'medium',
     text: shortenAlertText(item)
@@ -542,7 +535,6 @@ const conceptAlertLines = (id) => buildAlertLines(conceptAlertById(id))
 const isDownAlertText = (text) => /转跌|跌停|走弱|流出|下降|下跌/.test(String(text || ''))
 const alertChipClass = (line) => {
   if (isDownAlertText(line?.text)) return 'alert-chip--down'
-  if (line?.code === 'trade-drift' || line?.code === 'select-drift') return 'alert-chip--strategy'
   return `alert-chip--${line?.level || 'medium'}`
 }
 
