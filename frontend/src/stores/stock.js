@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { useAlertCenterStore } from '@/stores/alertCenter'
 
 const httpClient = globalThis.axios
+const useMockByDefault = process.env.VUE_APP_USE_MOCK !== 'false'
 
 /* =========================
    Utils（稳定 + 时变tick）
@@ -228,7 +229,7 @@ export const useStockStore = defineStore('stock', {
     myStockCodes: ['600550', '600519', '002410'],
 
     /** ✅ mock/后端切换 */
-    useMock: true,
+    useMock: useMockByDefault,
 
     _mockTimer: null
   }),
