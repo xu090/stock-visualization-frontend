@@ -8,12 +8,9 @@
     draggable
     align-center
   >
-    <!-- 顶部说明（更专业、更像产品） -->
     <div class="hint">
       <span class="dot" />
-      <span class="hint-text">
-        将当前条件保存为{{ type === 'select' ? '选股' : '交易' }}策略，方便下次一键应用。
-      </span>
+      <span class="hint-text">将当前筛选条件保存为策略，方便下次一键应用。</span>
     </div>
 
     <el-form label-width="86px" class="form">
@@ -34,93 +31,50 @@
           :rows="3"
           maxlength="80"
           show-word-limit
-          placeholder="一句话说明口径（可选）"
+          placeholder="一句话说明这组筛选策略（可选）"
           resize="none"
         />
       </el-form-item>
 
-      <!-- 选股：展示“当前排序/当前筛选” -->
-      <template v-if="type === 'select'">
-        <div class="snap-card">
-          <div class="snap-head">
-            <span class="snap-title">快照摘要</span>
-          </div>
+      <div class="snap-card">
+        <div class="snap-head">
+          <span class="snap-title">快照摘要</span>
+        </div>
 
-          <div class="snap-row">
-            <div class="snap-k">当前排序</div>
-            <div class="snap-v">
-              <!-- 优先用 tags -->
-              <template v-if="(metricsTags || []).length">
-                <el-tag
-                  v-for="m in metricsTags"
-                  :key="m.key || m.label"
-                  size="small"
-                  effect="plain"
-                  class="snap-tag"
-                >
-                  {{ m.label }}
-                </el-tag>
-              </template>
-
-              <!-- 其次用文本 -->
-              <template v-else>
-                <el-tag
-                  size="small"
-                  effect="plain"
-                  :type="metricsText ? 'success' : 'info'"
-                  class="snap-tag"
-                  :title="metricsText || '不排序'"
-                >
-                  {{ metricsText || '不排序' }}
-                </el-tag>
-              </template>
-            </div>
-          </div>
-
-          <div class="snap-row">
-            <div class="snap-k">当前筛选</div>
-            <div class="snap-v">
-              <div class="snap-pill" :title="filtersText || '无筛选条件'">
-                {{ filtersText || '无筛选条件' }}
-              </div>
-            </div>
+        <div class="snap-row">
+          <div class="snap-k">当前排序</div>
+          <div class="snap-v">
+            <template v-if="(metricsTags || []).length">
+              <el-tag
+                v-for="m in metricsTags"
+                :key="m.key || m.label"
+                size="small"
+                effect="plain"
+                class="snap-tag"
+              >
+                {{ m.label }}
+              </el-tag>
+            </template>
+            <template v-else>
+              <el-tag
+                size="small"
+                effect="plain"
+                :type="metricsText ? 'success' : 'info'"
+                class="snap-tag"
+              >
+                {{ metricsText || '未设置排序' }}
+              </el-tag>
+            </template>
           </div>
         </div>
-      </template>
 
-      <!-- 交易：占位更“产品化” -->
-      <template v-else>
-        <div class="snap-card">
-          <div class="snap-head">
-            <span class="snap-title">快照摘要</span>
-            <span class="snap-sub">（结构化信息展示，非JSON）</span>
-          </div>
-          <div class="snap-row">
-            <div class="snap-k">元信息</div>
-            <div class="snap-v">
-              <div class="snap-pill">
-                策略类型 / 适用市场 / 标的类型 / 时间周期
-              </div>
-            </div>
-          </div>
-          <div class="snap-row">
-            <div class="snap-k">入场/出场</div>
-            <div class="snap-v">
-              <div class="snap-pill">
-                买入条件、触发方式、止盈止损、退出信号
-              </div>
-            </div>
-          </div>
-          <div class="snap-row">
-            <div class="snap-k">仓位/风控</div>
-            <div class="snap-v">
-              <div class="snap-pill">
-                初始仓位、加减仓规则、回撤约束、黑名单、参数区
-              </div>
-            </div>
+        <div class="snap-row">
+          <div class="snap-k">当前筛选</div>
+          <div class="snap-v">
+            <div class="snap-pill">{{ filtersText || '无筛选条件' }}</div>
           </div>
         </div>
-      </template>
+      </div>
     </el-form>
 
     <template #footer>
@@ -138,36 +92,28 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  type: { type: String, default: 'select' }, // 'select' | 'trade'
   title: { type: String, default: '' },
-
-  // 选股展示：两种方式（二选一即可）
-  metricsTags: { type: Array, default: () => [] }, // [{key,label}]
-  metricsText: { type: String, default: '' },      // 纯文本摘要
+  metricsTags: { type: Array, default: () => [] },
+  metricsText: { type: String, default: '' },
   filtersText: { type: String, default: '' },
-
-  // 输入框占位
-  namePlaceholder: { type: String, default: '例如：资金强势 + 低波回撤' }
+  namePlaceholder: { type: String, default: '例如：资金优先 + 放量突破' }
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm'])
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (v) => emit('update:modelValue', v)
+  set: value => emit('update:modelValue', value)
 })
 
-const titleText = computed(() => {
-  if (props.title) return props.title
-  return props.type === 'select' ? '保存策略' : '保存交易策略'
-})
+const titleText = computed(() => props.title || '保存筛选策略')
 
 const form = reactive({ name: '', desc: '' })
 
 watch(
   () => visible.value,
-  (v) => {
-    if (v) {
+  value => {
+    if (value) {
       form.name = ''
       form.desc = ''
     }
@@ -184,147 +130,141 @@ const onConfirm = () => {
 </script>
 
 <style scoped>
-/* 让 dialog 内部整体更“高级”：留白、分组、层级 */
-.save-strategy-dialog :deep(.el-dialog){
+.save-strategy-dialog :deep(.el-dialog) {
   border-radius: 16px;
   overflow: hidden;
 }
 
-.save-strategy-dialog :deep(.el-dialog__header){
+.save-strategy-dialog :deep(.el-dialog__header) {
   padding: 16px 18px 10px;
 }
-.save-strategy-dialog :deep(.el-dialog__title){
+
+.save-strategy-dialog :deep(.el-dialog__title) {
   font-weight: 900;
   color: #111827;
-  letter-spacing: .2px;
 }
-.save-strategy-dialog :deep(.el-dialog__body){
+
+.save-strategy-dialog :deep(.el-dialog__body) {
   padding: 10px 18px 14px;
 }
-.save-strategy-dialog :deep(.el-dialog__footer){
+
+.save-strategy-dialog :deep(.el-dialog__footer) {
   padding: 12px 18px 16px;
 }
 
-/* 顶部提示 */
-.hint{
-  display:flex;
-  align-items:center;
+.hint {
+  display: flex;
+  align-items: center;
   gap: 8px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(64,158,255,.16);
-  background: rgba(64,158,255,.06);
+  border: 1px solid rgba(64, 158, 255, 0.16);
+  background: rgba(64, 158, 255, 0.06);
   margin-bottom: 12px;
 }
-.dot{
+
+.dot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: rgba(64,158,255,.95);
-  box-shadow: 0 0 0 4px rgba(64,158,255,.10);
+  background: rgba(64, 158, 255, 0.95);
+  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.1);
 }
-.hint-text{
+
+.hint-text {
   font-size: 12px;
   font-weight: 800;
-  color:#374151;
+  color: #374151;
 }
 
-/* 表单 */
-.form :deep(.el-form-item){
+.form :deep(.el-form-item) {
   margin-bottom: 12px;
 }
-.form :deep(.el-form-item__label){
+
+.form :deep(.el-form-item__label) {
   font-weight: 700;
-  color:#6b7280;
-}
-.form :deep(.el-input__wrapper),
-.form :deep(.el-textarea__inner){
-  border-radius: 12px;
-}
-.form :deep(.el-input__inner){
-  font-weight: 600;
-  color:#111827;
+  color: #6b7280;
 }
 
-/* 快照卡片：更像产品的“信息块” */
-.snap-card{
+.form :deep(.el-input__wrapper),
+.form :deep(.el-textarea__inner) {
+  border-radius: 12px;
+}
+
+.snap-card {
   margin-top: 6px;
   border-radius: 14px;
-  border: 1px solid rgba(0,0,0,.06);
-  background: rgba(0,0,0,.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.02);
   padding: 12px;
 }
-.snap-head{
-  display:flex;
+
+.snap-head {
+  display: flex;
   align-items: baseline;
   gap: 8px;
   margin-bottom: 10px;
 }
-.snap-title{
+
+.snap-title {
   font-size: 13px;
   font-weight: 800;
-  color:#111827;
-}
-.snap-sub{
-  font-size: 12px;
-  font-weight: 800;
-  color:#9ca3af;
+  color: #111827;
 }
 
-/* 摘要行：左 key 右 value */
-.snap-row{
-  display:grid;
+.snap-row {
+  display: grid;
   grid-template-columns: 64px 1fr;
   gap: 10px;
   padding: 8px 0;
 }
-.snap-row + .snap-row{
-  border-top: 1px dashed rgba(0,0,0,.06);
+
+.snap-row + .snap-row {
+  border-top: 1px dashed rgba(0, 0, 0, 0.06);
 }
 
-.snap-k{
+.snap-k {
   font-size: 12px;
   font-weight: 900;
-  color:#6b7280;
+  color: #6b7280;
   line-height: 1.4;
   white-space: nowrap;
 }
-.snap-v{
-  display:flex;
+
+.snap-v {
+  display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items:center;
+  align-items: center;
   min-width: 0;
 }
 
-/* tag 更圆润 */
-.snap-tag{
+.snap-tag {
   border-radius: 999px;
   font-weight: 900;
 }
 
-/* 筛选用 pill，不用 tag，看起来更“信息展示” */
-.snap-pill{
+.snap-pill {
   max-width: 100%;
-  align-items:center;
+  align-items: center;
   padding: 7px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,.08);
-  background: rgba(255,255,255,.7);
-  color:#111827;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  color: #111827;
   font-size: 12px;
   font-weight: 800;
-  overflow:hidden;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* footer */
-.footer{
-  display:flex;
-  justify-content:flex-end;
+.footer {
+  display: flex;
+  justify-content: flex-end;
   gap: 10px;
 }
-.btn{
+
+.btn {
   height: 34px !important;
   border-radius: 12px !important;
   font-weight: 900;

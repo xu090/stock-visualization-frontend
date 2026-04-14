@@ -2,10 +2,11 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import List
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app.config import ENABLE_KAFKA_CONSUMER
+from app.config import AUTO_BOOTSTRAP_CONCEPTS, ENABLE_KAFKA_CONSUMER
+from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
 from app.concept_service import (
     fetch_concept_detail,
     fetch_concept_overview,
@@ -13,15 +14,45 @@ from app.concept_service import (
     fetch_concept_time_sharing,
 )
 from app.db import get_conn
-from app.kafka_consumer import run_stock_time_sharing_consumer
+from app.kafka_consumer import run_event_consumer, run_stock_time_sharing_consumer
+from app.news_service import fetch_news_detail, fetch_news_list
+from app.stock_names import backfill_stock_names
+from app.strategy_service import (
+    bootstrap_select_strategies,
+    create_select_strategy,
+    delete_select_strategy,
+    ensure_select_strategies,
+    ensure_strategies_table,
+    fetch_select_strategies,
+    fetch_select_strategy,
+    update_select_strategy,
+)
 
 
 class QuoteRequest(BaseModel):
     codes: List[str]
 
 
+class SelectStrategyPayload(BaseModel):
+    name: str
+    desc: str | None = None
+    isFavorite: bool = False
+    isCustom: bool = True
+    enabled: bool = True
+    snapshot: dict
+
+
+class SelectStrategyPatch(BaseModel):
+    name: str | None = None
+    desc: str | None = None
+    isFavorite: bool | None = None
+    isCustom: bool | None = None
+    enabled: bool | None = None
+    snapshot: dict | None = None
+
+
 def normalize_code(raw: str | None) -> str:
-    # 兼容前端常见代码格式：600519.SH / sh600519 / 600519。
+    # 兼容前端常见代码格式，例如 600519.SH / sh600519 / 600519。
     if raw is None:
         return ""
     text = str(raw).strip()
@@ -35,7 +66,7 @@ def normalize_code(raw: str | None) -> str:
 
 
 def map_quote_row(row: dict) -> dict:
-    # 把数据库字段转换成前端 store 现在就能直接使用的结构。
+    # 把数据库字段转换成前端当前 store 能直接使用的结构。
     return {
         "code": row["stock_code"],
         "price": row["close"],
@@ -102,7 +133,7 @@ def fetch_quotes_by_codes(codes: list[str]) -> list[dict]:
 
 
 def fetch_time_sharing(code: str, limit: int = 120) -> list[dict]:
-    # 查询最近 N 条分钟数据，并按时间正序返回，前端图表可以直接使用。
+    # 查询最近 N 条分钟数据，并按时间正序返回，图表可以直接消费。
     sql = """
         SELECT
             stock_code,
@@ -148,17 +179,26 @@ def fetch_time_sharing(code: str, limit: int = 120) -> list[dict]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # FastAPI 生命周期里挂一个后台 Kafka 消费任务，服务启动即开始收数。
+    # 启动时先保证概念主数据存在，再启动 Kafka 分钟行情消费者。
     stop_event = asyncio.Event()
-    consumer_task = None
+    consumer_tasks: list[asyncio.Task] = []
+
+    if AUTO_BOOTSTRAP_CONCEPTS:
+        await asyncio.to_thread(ensure_default_concepts)
+    await asyncio.to_thread(ensure_strategies_table)
+    await asyncio.to_thread(ensure_select_strategies)
+
     if ENABLE_KAFKA_CONSUMER:
-        consumer_task = asyncio.create_task(run_stock_time_sharing_consumer(stop_event))
+        consumer_tasks.append(asyncio.create_task(run_stock_time_sharing_consumer(stop_event)))
+        consumer_tasks.append(asyncio.create_task(run_event_consumer(stop_event)))
+
     try:
         yield
     finally:
         stop_event.set()
-        if consumer_task is not None:
+        for consumer_task in consumer_tasks:
             consumer_task.cancel()
+        for consumer_task in consumer_tasks:
             try:
                 await consumer_task
             except asyncio.CancelledError:
@@ -170,7 +210,7 @@ app = FastAPI(title="Stock Visualization Backend", lifespan=lifespan)
 
 @app.get("/health")
 def health() -> dict:
-    # 健康检查先验证 PostgreSQL 是否可连；Kafka 是否启动由服务日志辅助判断。
+    # 用于快速确认服务本身、数据库连接和消费者开关是否正常。
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -189,7 +229,7 @@ def get_quotes(payload: QuoteRequest) -> dict:
 
 @app.get("/api/stocks/{code}/timesharing")
 def get_stock_time_sharing(code: str, limit: int = 120) -> dict:
-    # 对 limit 做边界限制，避免一次查太多分钟数据拖慢接口。
+    # 对 limit 做边界保护，避免一次查太多分钟数据。
     normalized = normalize_code(code)
     rows = fetch_time_sharing(normalized, min(max(limit, 1), 240))
     return {"data": rows}
@@ -212,3 +252,65 @@ def get_concept(concept_id: str) -> dict:
 def get_concept_time_sharing(concept_id: str, limit: int = 120) -> dict:
     rows = fetch_concept_time_sharing(concept_id, min(max(limit, 1), 240))
     return {"data": rows}
+
+
+@app.get("/api/news")
+def get_news(limit: int = 50, stock_code: str | None = None, keyword: str | None = None) -> dict:
+    rows = fetch_news_list(limit=min(max(limit, 1), 200), stock_code=normalize_code(stock_code), keyword=keyword)
+    return {"data": rows}
+
+
+@app.get("/api/news/{external_id}")
+def get_news_detail(external_id: str) -> dict:
+    row = fetch_news_detail(external_id)
+    return {"data": row}
+
+
+@app.post("/api/admin/bootstrap/concepts")
+def bootstrap_concepts() -> dict:
+    # 允许手动重刷默认概念，便于调试或对齐前端概念定义。
+    result = bootstrap_default_concepts()
+    return {"ok": True, "data": result}
+
+
+@app.post("/api/admin/backfill-stock-names")
+def sync_stock_names() -> dict:
+    # 把外部股票名称映射回填到当前 stocks 表中，修复早期只写代码不写中文名的记录。
+    result = backfill_stock_names()
+    return {"ok": True, "data": result}
+
+
+@app.get("/api/select-strategies")
+def get_select_strategies() -> dict:
+    return {"data": fetch_select_strategies()}
+
+
+@app.get("/api/select-strategies/{strategy_id}")
+def get_select_strategy(strategy_id: int) -> dict:
+    row = fetch_select_strategy(strategy_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="strategy not found")
+    return {"data": row}
+
+
+@app.post("/api/select-strategies")
+def post_select_strategy(payload: SelectStrategyPayload) -> dict:
+    return {"data": create_select_strategy(payload.model_dump())}
+
+
+@app.patch("/api/select-strategies/{strategy_id}")
+def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch) -> dict:
+    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True))
+    if row is None:
+        raise HTTPException(status_code=404, detail="strategy not found")
+    return {"data": row}
+
+
+@app.delete("/api/select-strategies/{strategy_id}")
+def remove_select_strategy(strategy_id: int) -> dict:
+    return {"ok": delete_select_strategy(strategy_id)}
+
+
+@app.post("/api/admin/bootstrap/select-strategies")
+def bootstrap_select_strategy_api() -> dict:
+    return {"ok": True, "data": bootstrap_select_strategies()}

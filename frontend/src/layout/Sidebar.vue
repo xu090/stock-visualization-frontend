@@ -145,8 +145,6 @@
             class="fav-item"
             :class="{
               active: isStockRouteActive(s.code),
-              'signal-buy': s.tradeAction === 'buy',
-              'signal-sell': s.tradeAction === 'sell',
               'has-alert': !!stockAlertByCode(s.code),
               'has-alert-high': stockAlertByCode(s.code)?.level === 'high'
             }"
@@ -178,14 +176,6 @@
                       </div>
                     </div>
                   </el-tooltip>
-                  <div
-                    v-if="appliedTradeStrategy"
-                    class="trade-signal"
-                    :class="`sig-${s.tradeAction || 'hold'}`"
-                    :title="s.tradeReason || ''"
-                  >
-                    {{ tradeSignalText(s.tradeAction) }} {{ Number.isFinite(s.tradeScore) ? `(${s.tradeScore})` : '' }}
-                  </div>
                 </div>
               </div>
 
@@ -342,10 +332,8 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
-import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useAlertCenterStore } from '@/stores/alertCenter'
-import { evaluateTradeStrategyForQuote } from '@/utils/tradeEngine'
 import { HomeFilled, Tickets, StarFilled, Star, Delete, ArrowRight } from '@element-plus/icons-vue'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 import { ElMessage } from 'element-plus'
@@ -354,7 +342,6 @@ const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
-const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
 const alertCenter = useAlertCenterStore()
 
@@ -439,69 +426,31 @@ const myStocksOldSafe = computed(() => {
   return Array.isArray(list) ? list : []
 })
 
-const currentAppliedTradeId = computed(() => homeFilter.appliedTradeStrategyId || null)
-const currentAppliedSelectId = computed(() => homeFilter.appliedSelectStrategyId || null)
-const appliedTradeStrategy = computed(() => {
-  const id = currentAppliedTradeId.value
-  if (!id) return null
-  return (strategyStore.tradeStrategies || []).find(s => s.id === id) || null
-})
-
 const myStockEnriched = computed(() => {
-  const applied = appliedTradeStrategy.value
-  const actionRank = { buy: 0, hold: 1, sell: 2 }
-
   if (myStockCodesSafe.value.length) {
-    const rows = myStockCodesSafe.value
+    return myStockCodesSafe.value
       .map(code => {
         const c = normalizeCode(code)
         const base = stockStore?.getStockBaseByCode?.(c)
         const q = stockStore?.getStockByCodeEnriched?.(c)
-        const result = applied?.snapshot
-          ? evaluateTradeStrategyForQuote(applied.snapshot, q || {})
-          : null
         return {
           code: c,
           name: base?.name || q?.name || c,
           change: Number(q?.change ?? q?.changePercent ?? 0),
-          changeAmount: Number(q?.changeAmount ?? 0),
-          tradeAction: result?.action || null,
-          tradeScore: Number.isFinite(Number(result?.score)) ? Number(result?.score) : null,
-          tradeReason: Array.isArray(result?.reason) ? result.reason.join('；') : (result?.reason || '')
+          changeAmount: Number(q?.changeAmount ?? 0)
         }
       })
       .filter(Boolean)
-    if (!applied?.snapshot) return rows
-    return rows.slice().sort((a, b) => {
-      const ar = actionRank[a.tradeAction] ?? 9
-      const br = actionRank[b.tradeAction] ?? 9
-      if (ar !== br) return ar - br
-      return (b.tradeScore ?? -1) - (a.tradeScore ?? -1)
-    })
   }
 
-  const rows = myStocksOldSafe.value.map(s => {
+  return myStocksOldSafe.value.map(s => {
     const c = normalizeCode(s.code)
-    const q = stockStore?.getStockByCodeEnriched?.(c)
-    const result = applied?.snapshot
-      ? evaluateTradeStrategyForQuote(applied.snapshot, q || {})
-      : null
     return {
       code: c,
       name: s.name || c,
       change: Number(s.change ?? 0),
-      changeAmount: Number(s.changeAmount ?? 0),
-      tradeAction: result?.action || null,
-      tradeScore: Number.isFinite(Number(result?.score)) ? Number(result?.score) : null,
-      tradeReason: Array.isArray(result?.reason) ? result.reason.join('；') : (result?.reason || '')
+      changeAmount: Number(s.changeAmount ?? 0)
     }
-  })
-  if (!applied?.snapshot) return rows
-  return rows.slice().sort((a, b) => {
-    const ar = actionRank[a.tradeAction] ?? 9
-    const br = actionRank[b.tradeAction] ?? 9
-    if (ar !== br) return ar - br
-    return (b.tradeScore ?? -1) - (a.tradeScore ?? -1)
   })
 })
 
@@ -539,7 +488,7 @@ const alertChipClass = (line) => {
 }
 
 watch(
-  [myConceptsEnriched, myStockEnriched, currentAppliedTradeId, currentAppliedSelectId],
+  [myConceptsEnriched, myStockEnriched],
   () => {
     alertCenter.scanAll()
   },
@@ -665,12 +614,6 @@ const saveConceptEdit = (conceptData) => {
   conceptDrawerVisible.value = false
   editingConcept.value = null
   ElMessage.success('已更新概念')
-}
-
-const tradeSignalText = (action) => {
-  if (action === 'buy') return '买入信号'
-  if (action === 'sell') return '卖出信号'
-  return '观望'
 }
 
 /** 总览按钮状态 */
@@ -1084,15 +1027,6 @@ const fmtMoneySigned = (v) => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.trade-signal{
-  margin-top: 3px;
-  font-size: 10px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-.trade-signal.sig-buy{ color: #f56c6c; }
-.trade-signal.sig-sell{ color: #67c23a; }
-.trade-signal.sig-hold{ color: #909399; }
 .alert-lines{
   margin-top: 4px;
   display: flex;

@@ -602,7 +602,6 @@ const clearOnlyFilters = () => {
   homeFilter.onlyEditable = false
 
   if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
-  if ('appliedTradeStrategyId' in homeFilter) homeFilter.appliedTradeStrategyId = null
   ElMessage.success('已清空筛选')
 }
 
@@ -626,7 +625,6 @@ const removeMetric = (key) => {
 const clearSort = () => {
   homeFilter.selectedMetrics = []
   if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
-  if ('appliedTradeStrategyId' in homeFilter) homeFilter.appliedTradeStrategyId = null
 }
 
 /** ✅ 全部重置 */
@@ -641,7 +639,6 @@ const resetAll = () => {
   homeFilter.onlyEditable = false
 
   if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
-  if ('appliedTradeStrategyId' in homeFilter) homeFilter.appliedTradeStrategyId = null
   ElMessage.success('已全部重置')
 }
 

@@ -13,7 +13,7 @@ def _safe_num(value: Any, default: float = 0.0) -> float:
 
 
 def fetch_concept_overview() -> list[dict]:
-    # 取每只股票最新一分钟数据，再按 concept 聚合成概念概览。
+    # 先取每只股票最新一分钟数据，再按 concept 聚合成概念总览。
     sql = """
         WITH latest_stock AS (
             SELECT DISTINCT ON (stock_code)
@@ -111,7 +111,7 @@ def fetch_concept_detail(concept_id: str) -> dict | None:
 
 
 def fetch_concept_stocks(concept_id: str) -> list[dict]:
-    # 参考学长行业板块逻辑：每只成分股只取最新一条，便于概念详情页展示。
+    # 每只成分股只取最新一条分钟数据，便于概念详情页展示。
     sql = """
         WITH latest_stock AS (
             SELECT DISTINCT ON (stock_code)
@@ -186,7 +186,7 @@ def fetch_concept_stocks(concept_id: str) -> list[dict]:
 
 
 def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
-    # 参考行业指数计算思路，用等权方式按分钟聚合概念曲线。
+    # 用等权方式按分钟聚合概念曲线，适合前端做概念分时展示。
     sql = """
         WITH concept_rows AS (
             SELECT
