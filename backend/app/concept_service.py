@@ -7,6 +7,10 @@ from app.stock_names import get_stock_name
 def _safe_num(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _normalize_code(raw: str | None) -> str:
@@ -99,10 +103,6 @@ def _fetch_concept_stock_codes(cur, concept_id: str) -> list[str]:
         (concept_id,),
     )
     return [row["stock_code"] for row in cur.fetchall()]
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def fetch_concept_overview() -> list[dict]:
@@ -493,3 +493,139 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
+    concept = fetch_concept_profile(concept_id)
+    if concept is None:
+        return None
+
+    sql = """
+        WITH concept_minutes AS (
+            SELECT
+                st.ts,
+                AVG(st.close) AS close,
+                AVG(st.udf) AS change,
+                AVG(st.tor) AS turnover,
+                AVG(st.udz) AS volatility,
+                SUM(st.amount) AS amount,
+                SUM(CASE WHEN st.udf > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) AS up_ratio,
+                COUNT(*) AS stock_count
+            FROM stock_time_sharing st
+            JOIN concept_stocks cs ON cs.stock_code = st.stock_code
+            WHERE cs.concept_id = %s
+              AND st.ts >= NOW() - INTERVAL '20 days'
+            GROUP BY st.ts
+        ),
+        ranked AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (ORDER BY ts DESC) AS rn,
+                MAX(close) OVER () AS max_close,
+                MIN(close) OVER () AS min_close,
+                FIRST_VALUE(close) OVER (ORDER BY ts ASC) AS first_close
+            FROM concept_minutes
+        )
+        SELECT
+            latest.ts AS latest_ts,
+            latest.close AS latest_close,
+            latest.change AS change,
+            latest.turnover AS turnover,
+            latest.volatility AS volatility,
+            latest.amount AS amount,
+            latest.up_ratio AS up_ratio,
+            latest.stock_count AS stock_count,
+            prev.close AS prev_close,
+            five.close AS five_close,
+            latest.first_close,
+            latest.max_close,
+            latest.min_close
+        FROM ranked latest
+        LEFT JOIN ranked prev ON prev.rn = 2
+        LEFT JOIN ranked five ON five.rn = 6
+        WHERE latest.rn = 1
+    """
+    curve_sql = """
+        WITH concept_minutes AS (
+            SELECT
+                st.ts,
+                AVG(st.close) AS close,
+                AVG(st.udf) AS change
+            FROM stock_time_sharing st
+            JOIN concept_stocks cs ON cs.stock_code = st.stock_code
+            WHERE cs.concept_id = %s
+              AND st.ts >= NOW() - INTERVAL '20 days'
+            GROUP BY st.ts
+            ORDER BY st.ts DESC
+            LIMIT %s
+        )
+        SELECT ts, close, change
+        FROM concept_minutes
+        ORDER BY ts ASC
+    """
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (concept_id,))
+            row = cur.fetchone()
+            cur.execute(curve_sql, (concept_id, limit))
+            curve_rows = cur.fetchall()
+
+    if not row:
+        return {
+            **concept,
+            "change": 0.0,
+            "change1m": 0.0,
+            "change5m": 0.0,
+            "change20d": 0.0,
+            "drawdown20d": 0.0,
+            "strength": 0,
+            "amount": 0.0,
+            "turnover": 0.0,
+            "upRatio": 0.0,
+            "volatility": 0.0,
+            "stockCount": len(concept.get("stockCodes") or []),
+            "activeStockCount": 0,
+            "latestTs": None,
+            "curve": [],
+        }
+
+    latest_close = _safe_num(row["latest_close"], 0.0)
+    prev_close = _safe_num(row["prev_close"], latest_close)
+    five_close = _safe_num(row["five_close"], prev_close)
+    first_close = _safe_num(row["first_close"], latest_close)
+    max_close = _safe_num(row["max_close"], latest_close)
+    change = _safe_num(row["change"], 0.0)
+    turnover = _safe_num(row["turnover"], 0.0)
+    up_ratio = _safe_num(row["up_ratio"], 0.0)
+    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
+
+    def pct_from(base: float) -> float:
+        if not base:
+            return 0.0
+        return round(((latest_close - base) / base) * 100, 2)
+
+    return {
+        **concept,
+        "change": round(change, 2),
+        "change1m": pct_from(prev_close),
+        "change5m": pct_from(five_close),
+        "change20d": pct_from(first_close),
+        "drawdown20d": round(((latest_close - max_close) / max_close) * 100, 2) if max_close else 0.0,
+        "strength": strength,
+        "amount": _safe_num(row["amount"], 0.0),
+        "turnover": round(turnover, 2),
+        "upRatio": round(up_ratio, 2),
+        "volatility": round(_safe_num(row["volatility"], 0.0), 2),
+        "stockCount": len(concept.get("stockCodes") or []),
+        "activeStockCount": row["stock_count"] or 0,
+        "latestTs": int(row["latest_ts"].timestamp() * 1000) if row["latest_ts"] else None,
+        "curve": [
+            {
+                "ts": int(item["ts"].timestamp() * 1000) if item["ts"] else None,
+                "close": round(_safe_num(item["close"], 0.0), 4),
+                "change": round(_safe_num(item["change"], 0.0), 2),
+            }
+            for item in curve_rows
+        ],
+    }

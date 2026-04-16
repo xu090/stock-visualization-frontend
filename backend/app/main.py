@@ -11,14 +11,16 @@ from app.concept_service import (
     create_user_concept,
     delete_user_concept,
     fetch_concept_detail,
+    fetch_concept_macro,
     fetch_concept_overview,
+    fetch_concept_profile,
     fetch_concept_stocks,
     fetch_concept_time_sharing,
     update_user_concept,
 )
 from app.db import get_conn
 from app.kafka_consumer import run_event_consumer, run_stock_time_sharing_consumer
-from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_list
+from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_feed, fetch_news_list
 from app.stock_names import backfill_stock_names
 from app.stock_service import fetch_stock_detail, search_stocks
 from app.strategy_service import (
@@ -287,6 +289,14 @@ def post_concept(payload: ConceptPayload) -> dict:
     return {"data": row}
 
 
+@app.get("/api/concepts/{concept_id}/profile")
+def get_concept_profile_api(concept_id: str) -> dict:
+    row = fetch_concept_profile(concept_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
 @app.get("/api/concepts/{concept_id}")
 def get_concept(concept_id: str) -> dict:
     concept = fetch_concept_detail(concept_id)
@@ -320,6 +330,14 @@ def remove_concept(concept_id: str) -> dict:
     return {"ok": True}
 
 
+@app.get("/api/concepts/{concept_id}/macro")
+def get_concept_macro_api(concept_id: str, limit: int = 240) -> dict:
+    row = fetch_concept_macro(concept_id, min(max(limit, 20), 1000))
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
 @app.get("/api/concepts/{concept_id}/timesharing")
 def get_concept_time_sharing(concept_id: str, limit: int = 120) -> dict:
     rows = fetch_concept_time_sharing(concept_id, min(max(limit, 1), 240))
@@ -336,6 +354,16 @@ def get_concept_news_api(concept_id: str, limit: int = 20) -> dict:
 def get_news(limit: int = 50, stock_code: str | None = None, keyword: str | None = None) -> dict:
     rows = fetch_news_list(limit=min(max(limit, 1), 200), stock_code=normalize_code(stock_code), keyword=keyword)
     return {"data": rows}
+
+
+@app.get("/api/news/feed")
+def get_news_feed_api(concept_id: str = "semiconductor", limit: int = 10, policy_limit: int = 5) -> dict:
+    data = fetch_news_feed(
+        concept_id=concept_id,
+        limit=min(max(limit, 1), 50),
+        policy_limit=min(max(policy_limit, 1), 20),
+    )
+    return {"data": data}
 
 
 @app.get("/api/news/{external_id}")

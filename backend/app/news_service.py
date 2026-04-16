@@ -1,3 +1,6 @@
+import re
+from datetime import datetime
+
 from app.db import get_conn
 
 
@@ -18,6 +21,83 @@ def _map_news_row(row: dict) -> dict:
         "subType": row["sub_type"],
         "recommend": row["recommend"],
         "createdAt": int(row["created_at"].timestamp() * 1000) if row["created_at"] else None,
+    }
+
+
+def _extract_stock_codes(stocks) -> list[str]:
+    text = ""
+    if isinstance(stocks, list):
+        text = " ".join(str(item) for item in stocks)
+    elif stocks is not None:
+        text = str(stocks)
+    return sorted(set(re.findall(r"\b\d{6}\b", text)))
+
+
+def _format_front_time(publish_time_ms: int | None) -> str:
+    if not publish_time_ms:
+        return ""
+    return datetime.fromtimestamp(publish_time_ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _content_to_paragraphs(content: str | None, brief: str | None) -> list[str]:
+    paragraphs = []
+    if brief:
+        paragraphs.append(str(brief))
+    if content:
+        for item in re.split(r"[\r\n]+", str(content)):
+            text = item.strip()
+            if text and text not in paragraphs:
+                paragraphs.append(text)
+    return paragraphs
+
+
+def _infer_sentiment(row: dict) -> str:
+    text = f"{row.get('title') or ''} {row.get('brief') or ''} {row.get('content') or ''}"
+    if any(word in text for word in ("利好", "上涨", "走强", "增长", "突破", "支持")):
+        return "positive"
+    if any(word in text for word in ("利空", "下跌", "走弱", "风险", "回落", "亏损")):
+        return "negative"
+    return "neutral"
+
+
+def _concept_ids_for_stock_codes(stock_codes: list[str]) -> list[str]:
+    if not stock_codes:
+        return []
+    sql = """
+        SELECT DISTINCT concept_id
+        FROM concept_stocks
+        WHERE stock_code = ANY(%s)
+        ORDER BY concept_id
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (stock_codes,))
+            rows = cur.fetchall()
+    return [row["concept_id"] for row in rows]
+
+
+def _to_front_news(row: dict, fallback_concept_id: str | None = None, category: str = "概念") -> dict:
+    stock_codes = _extract_stock_codes(row.get("stocks"))
+    concept_ids = _concept_ids_for_stock_codes(stock_codes)
+    if fallback_concept_id and fallback_concept_id not in concept_ids:
+        concept_ids.insert(0, fallback_concept_id)
+
+    brief = row.get("brief") or ""
+    return {
+        "id": row["id"],
+        "category": category,
+        "title": row.get("title") or "",
+        "source": row.get("source") or row.get("thirdPartySource") or "",
+        "time": _format_front_time(row.get("publishTime")),
+        "brief": brief,
+        "sentiment": _infer_sentiment(row),
+        "heat": 80 if row.get("recommend") else 55,
+        "conceptIds": concept_ids,
+        "keyPoints": [brief] if brief else [],
+        "whatToWatch": ["关注后续公告、成交量变化和概念内成分股扩散情况"],
+        "relatedStocks": stock_codes,
+        "content": _content_to_paragraphs(row.get("content"), brief),
+        "raw": row,
     }
 
 
@@ -101,6 +181,20 @@ def fetch_concept_news(concept_id: str, limit: int = 20) -> list[dict]:
             rows = cur.fetchall()
 
     return [_map_news_row(row) for row in rows]
+
+
+def fetch_news_feed(concept_id: str = "semiconductor", limit: int = 10, policy_limit: int = 5) -> dict:
+    policy_rows = fetch_news_list(limit=policy_limit, keyword="政策")
+    if not policy_rows:
+        policy_rows = fetch_news_list(limit=policy_limit)
+
+    dynamic_rows = fetch_concept_news(concept_id, limit=limit)
+
+    return {
+        "context": {"type": "concept", "conceptId": concept_id},
+        "policyNews": [_to_front_news(row, category="政策") for row in policy_rows],
+        "dynamicNews": [_to_front_news(row, fallback_concept_id=concept_id, category="概念") for row in dynamic_rows],
+    }
 
 
 def fetch_news_detail(external_id: str) -> dict | None:
