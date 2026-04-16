@@ -155,18 +155,26 @@ const openEdit = (row) => {
   drawerVisible.value = true
 }
 
-const onSaved = (conceptData) => {
+const onSaved = async (conceptData) => {
   const existed = (conceptStore.userConcepts || []).some(c => String(c.id) === String(conceptData.id))
-  if (existed) conceptStore.updateUserConcept(conceptData)
-  else conceptStore.addUserConcept(conceptData)
+  try {
+    if (existed) await conceptStore.updateUserConcept(conceptData)
+    else await conceptStore.addUserConcept(conceptData)
 
-  ElMessage.success(existed ? '概念已更新' : '概念已创建')
-  router.push(`/concept/${conceptData.id}`)
+    ElMessage.success(existed ? '概念已更新' : '概念已创建')
+    router.push(`/concept/${conceptData.id}`)
+  } catch (error) {
+    ElMessage.error(error?.message || '概念保存失败')
+  }
 }
 
-const remove = (row) => {
-  conceptStore.deleteUserConcept(row.id)
-  ElMessage.success('概念已删除')
+const remove = async (row) => {
+  try {
+    await conceptStore.deleteUserConcept(row.id)
+    ElMessage.success('概念已删除')
+  } catch (error) {
+    ElMessage.error(error?.message || '概念删除失败')
+  }
 }
 
 const goDetail = (row) => router.push(`/concept/${row.id}`)

@@ -273,7 +273,10 @@ def update_user_concept(concept_id: str, payload: dict) -> dict | None:
             existing = cur.fetchone()
             if not existing:
                 return None
-            if not existing["editable"]:
+            # 系统内置概念不允许改名称、描述、算法和成分股，但收藏状态属于用户侧偏好，
+            # 前端首页/概念列表需要能够持久化这个开关。
+            payload_keys = set(payload.keys())
+            if not existing["editable"] and payload_keys - {"favorite"}:
                 raise PermissionError("system concept cannot be modified")
 
             fields: list[str] = []

@@ -186,6 +186,13 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
   },
 
   actions: {
+    async fetchMacroData() {
+      const conceptStore = useConceptStore()
+      await conceptStore.ensureLoaded?.()
+      await conceptStore.refreshConceptMacros?.()
+      this.ensureSelectedCategory()
+    },
+
     ensureSelectedCategory() {
       if (!this.categories.length) {
         this.selectedCategoryId = ''

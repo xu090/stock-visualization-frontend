@@ -366,13 +366,13 @@ const refresh = async () => {
 
 onMounted(() => {
   // ✅ 演示用：让当前股票行情动起来（如不需要，可删）
-  stockStore.startMockTicker([stockCode.value], 3000)
+  stockStore.startQuotePolling([stockCode.value], 3000)
   refresh()
   window.addEventListener('resize', resizeCharts)
 })
 
 watch(() => stockCode.value, async (newCode) => {
-  stockStore.startMockTicker([newCode], 3000)
+  stockStore.startQuotePolling([newCode], 3000)
   await refresh()
 })
 watch([klinePeriod, fundMode], () => {
@@ -382,7 +382,7 @@ watch([klinePeriod, fundMode], () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts)
-  stockStore.stopMockTicker()
+  stockStore.stopQuotePolling()
   fundChart?.dispose()
   klineChart?.dispose()
 })

@@ -247,10 +247,12 @@ import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick, d
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
+import { apiGet } from '@/utils/api'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
 import { buildConceptAnalysisPayload } from '@/utils/conceptAnalysis'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -398,19 +400,19 @@ const goStock = (row) => {
 /** ✅ 收藏（单列表：favorite 字段） */
 const isFav = computed(() => conceptStore.isConceptFavorite?.(curId.value) ?? false)
 
-const toggleFav = () => {
+const toggleFav = async () => {
   const c = concept.value
   if (!c) return
 
   // 优先走你新 store 的 toggleFavorite
   if (typeof conceptStore.toggleFavorite === 'function') {
-    conceptStore.toggleFavorite(curId.value)
+    await conceptStore.toggleFavorite(curId.value)
     return
   }
 
   // 兼容旧接口（你 store 也保留了）
-  if (isFav.value) conceptStore.removeConceptFromMyConcept?.(curId.value)
-  else conceptStore.addConceptToMyConcept?.(c)
+  if (isFav.value) await conceptStore.removeConceptFromMyConcept?.(curId.value)
+  else await conceptStore.addConceptToMyConcept?.(c)
 }
 
 /** 格式化 */
@@ -445,7 +447,7 @@ const leaderStock = computed(() => {
 })
 
 
-/** ===== 你原来的 9 宫格 & 图表（保持 mock）===== */
+/** ===== 概念详情指标与图表 ===== */
 const klinePeriod = ref('1m')
 const board = ref({
   open: 2680, close: 2700, high: 2715, low: 2668, preClose: 2688,
@@ -523,12 +525,12 @@ const refresh = async () => {
 
 /**
  * ✅ 重要修正：curId/成分股变化时先 stop 再 start，避免重复计时器叠加
- * （如果你的 stockStore.startMockTicker 内部已自动清理，可删掉 stopMockTicker 这一行）
+ * 成分股变化时先停止旧轮询，再启动新的真实行情轮询。
  */
 const startTickerForCurrent = () => {
   const codes = stockCodesNormalized.value
-  stockStore.stopMockTicker?.()
-  stockStore.startMockTicker?.(codes, 3000)
+  stockStore.stopQuotePolling?.()
+  stockStore.startQuotePolling?.(codes, 3000)
 }
 
 onMounted(() => {
@@ -547,7 +549,7 @@ watch(
 watch(klinePeriod, initKlineChart)
 
 onBeforeUnmount(() => {
-  stockStore.stopMockTicker?.()
+  stockStore.stopQuotePolling?.()
   fundChart?.dispose()
   klineChart?.dispose()
 })

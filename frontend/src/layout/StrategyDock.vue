@@ -324,10 +324,15 @@ const toggleApply = s => {
   ElMessage.success(`已应用：${s.name}`)
 }
 
-const toggleFavorite = s => {
+const toggleFavorite = async s => {
   if (!s) return
-  strategyStore.toggleFavorite('select', s.id)
-  ElMessage.success(s.isFavorite ? '已收藏' : '已取消收藏')
+  try {
+    const nextFavorite = !s.isFavorite
+    await strategyStore.toggleFavorite('select', s.id)
+    ElMessage.success(nextFavorite ? '已收藏' : '已取消收藏')
+  } catch (error) {
+    ElMessage.error(error?.message || '收藏状态更新失败')
+  }
 }
 
 const removeStrategySafe = async s => {
@@ -337,7 +342,7 @@ const removeStrategySafe = async s => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    strategyStore.removeStrategy('select', s.id)
+    await strategyStore.removeStrategy('select', s.id)
     if (currentAppliedSelectId.value === s.id) {
       currentAppliedSelectId.value = null
       resetHomeSelectToDefault()
@@ -422,9 +427,13 @@ const onAllDialogToggleFavorite = ({ strategy }) => toggleFavorite(strategy)
 const onAllDialogToggleApply = ({ strategy }) => toggleApply(strategy)
 const onAllDialogEdit = ({ strategy }) => openEdit(strategy)
 const onAllDialogRemove = ({ strategy }) => removeStrategySafe(strategy)
-const onAllDialogCreate = ({ payload }) => {
-  strategyStore.addSelectStrategyFromSnapshot(payload)
-  ElMessage.success('已新建策略')
+const onAllDialogCreate = async ({ payload }) => {
+  try {
+    await strategyStore.addSelectStrategyFromSnapshot(payload)
+    ElMessage.success('已新建策略')
+  } catch (error) {
+    ElMessage.error(error?.message || '策略新建失败')
+  }
 }
 
 const editVisible = ref(false)
@@ -450,7 +459,7 @@ const resetEditFilters = () => {
   Object.assign(f, emptySelectFilters())
 }
 
-const submitEdit = () => {
+const submitEdit = async () => {
   const s = editForm.value
   if (!s?.name?.trim()) {
     ElMessage.warning('请输入策略名称')
@@ -460,13 +469,17 @@ const submitEdit = () => {
     ...(s.snapshot || {}),
     filters: ensureFilterShape(s.snapshot?.filters || {})
   })
-  strategyStore.updateStrategy('select', s.id, {
-    name: s.name,
-    desc: s.desc,
-    snapshot: cleanSnap
-  })
-  editVisible.value = false
-  ElMessage.success('已保存修改')
+  try {
+    await strategyStore.updateStrategy('select', s.id, {
+      name: s.name,
+      desc: s.desc,
+      snapshot: cleanSnap
+    })
+    editVisible.value = false
+    ElMessage.success('已保存修改')
+  } catch (error) {
+    ElMessage.error(error?.message || '策略保存失败')
+  }
 }
 </script>
 

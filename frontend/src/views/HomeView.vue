@@ -646,7 +646,7 @@ const resetAll = () => {
 const saveDialogVisible = ref(false)
 const openSaveStrategy = () => { saveDialogVisible.value = true }
 
-const doSaveStrategy = ({ name, desc }) => {
+const doSaveStrategy = async ({ name, desc }) => {
   if (typeof strategyStore.addSelectStrategyFromSnapshot !== 'function') {
     ElMessage.error('strategyStore.addSelectStrategyFromSnapshot 不存在')
     return
@@ -656,13 +656,17 @@ const doSaveStrategy = ({ name, desc }) => {
     return
   }
 
-  strategyStore.addSelectStrategyFromSnapshot({
-    name,
-    desc,
-    snapshot: homeFilter.toSnapshot()
-  })
-  saveDialogVisible.value = false
-  ElMessage.success('策略已保存')
+  try {
+    await strategyStore.addSelectStrategyFromSnapshot({
+      name,
+      desc,
+      snapshot: homeFilter.toSnapshot()
+    })
+    saveDialogVisible.value = false
+    ElMessage.success('策略已保存')
+  } catch (error) {
+    ElMessage.error(error?.message || '策略保存失败')
+  }
 }
 
 /** ✅ 总览数据：单列表直接用 conceptOverviewAll */
@@ -843,14 +847,18 @@ const summaryPillText = computed(() => {
   return `${base} ｜ 新闻关联：${names}`
 })
 
-const toggleFavorite = (concept) => {
+const toggleFavorite = async (concept) => {
   if (!concept?.id) return
-  if (typeof conceptStore.toggleFavorite === 'function') {
-    conceptStore.toggleFavorite(concept.id)
-    return
+  try {
+    if (typeof conceptStore.toggleFavorite === 'function') {
+      await conceptStore.toggleFavorite(concept.id)
+      return
+    }
+    if (isFavorite(concept.id)) await conceptStore.removeConceptFromMyConcept?.(concept.id)
+    else await conceptStore.addConceptToMyConcept?.(concept)
+  } catch (error) {
+    ElMessage.error(error?.message || '收藏状态更新失败')
   }
-  if (isFavorite(concept.id)) conceptStore.removeConceptFromMyConcept?.(concept.id)
-  else conceptStore.addConceptToMyConcept?.(concept)
 }
 
 const viewDetail = (concept) => {
@@ -892,7 +900,7 @@ const removeUserConcept = async (item) => {
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
 
-    conceptStore.deleteUserConcept(item.id)
+    await conceptStore.deleteUserConcept(item.id)
 
     if (Array.isArray(homeFilter.newsConceptIds)) {
       homeFilter.newsConceptIds = homeFilter.newsConceptIds.filter(x => String(x) !== String(item.id))
@@ -926,8 +934,13 @@ const onSaved = async (conceptData) => {
     payload.favorite = !!conceptData.favorite
   }
 
-  if (existed) conceptStore.updateUserConcept(payload)
-  else conceptStore.addUserConcept(payload)
+  try {
+    if (existed) await conceptStore.updateUserConcept(payload)
+    else await conceptStore.addUserConcept(payload)
+  } catch (error) {
+    ElMessage.error(error?.message || '概念保存失败')
+    return
+  }
 
   if (!isEditFlow) clearSearch()
 

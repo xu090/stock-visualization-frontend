@@ -15,55 +15,6 @@ const targetKey = (type, id) => `${type}:${id}`
 
 const removeTargetAlerts = (alerts, type, id) => alerts.filter(x => !(x.targetType === type && String(x.targetId) === String(id)))
 
-const buildDemoStockQuoteBaseline = (quote = {}, profile = 'reversal-and-drift') => {
-  const currentChange = Number(quote.change ?? quote.changePercent ?? 0) || 0
-  const currentNetInflow = Number(quote.netInflow ?? 0) || 0
-  const currentMainInflow = Number(quote.mainInflow ?? 0) || 0
-
-  if (profile === 'quiet') {
-    return {
-      ...quote,
-      change: currentChange,
-      changePercent: Number(quote.changePercent ?? quote.change ?? 0) || currentChange,
-      netInflow: currentNetInflow,
-      mainInflow: currentMainInflow
-    }
-  }
-
-  if (profile === 'drift-only') {
-    return {
-      ...quote,
-      change: currentChange <= 0 ? -Math.max(1, Math.abs(currentChange) || 1) : Math.max(1, Math.abs(currentChange) || 1),
-      changePercent: currentChange <= 0 ? -Math.max(1, Math.abs(Number(quote.changePercent ?? currentChange) || 1)) : Math.max(1, Math.abs(Number(quote.changePercent ?? currentChange) || 1)),
-      netInflow: currentNetInflow <= 0 ? -Math.max(80_000_000, Math.abs(currentNetInflow) || 80_000_000) : Math.max(80_000_000, Math.abs(currentNetInflow) || 80_000_000),
-      mainInflow: currentMainInflow <= 0 ? -Math.max(50_000_000, Math.abs(currentMainInflow) || 50_000_000) : Math.max(50_000_000, Math.abs(currentMainInflow) || 50_000_000)
-    }
-  }
-
-  return {
-    ...quote,
-    change: Math.max(2, Math.abs(currentChange) || 2),
-    changePercent: Math.max(2, Math.abs(Number(quote.changePercent ?? currentChange) || 2)),
-    netInflow: Math.max(80_000_000, Math.abs(currentNetInflow) || 80_000_000),
-    mainInflow: Math.max(50_000_000, Math.abs(currentMainInflow) || 50_000_000)
-  }
-}
-
-const pickDemoStockProfile = (stockCodes = [], code = '') => {
-  const idx = (stockCodes || []).findIndex(x => normalizeCode(x) === normalizeCode(code))
-  if (idx === 1) return 'quiet'
-  if (idx === 2) return 'drift-only'
-  return 'reversal-and-drift'
-}
-
-const buildDemoConceptMetricsBaseline = (metrics = {}) => ({
-  change: Math.max(2, Math.abs(Number(metrics.change ?? 0)) || 2),
-  netInflow: Math.max(120_000_000, Math.abs(Number(metrics.netInflow ?? 0)) || 120_000_000),
-  upRatio: Math.max(0.62, Number(metrics.upRatio ?? 0.55) || 0.62),
-  strength: Math.max(60, Number(metrics.strength ?? 0) || 60),
-  spike5m: Math.max(55, Number(metrics.spike5m ?? 0) || 55)
-})
-
 export const useAlertCenterStore = defineStore('alertCenter', {
   state: () => ({
     alerts: [],
@@ -99,10 +50,8 @@ export const useAlertCenterStore = defineStore('alertCenter', {
       if (!c) return
       const key = targetKey('stock', c)
 
-      const stockStore = useStockStore()
       const conceptStore = useConceptStore()
-      const useDemoBaseline = !!stockStore.useMock
-      const demoProfile = pickDemoStockProfile(stockStore.myStockCodes || [], c)
+      const stockStore = useStockStore()
       const currentQuote = stockStore.getStockByCodeEnriched?.(c) || {}
       const relatedConceptIds = (conceptStore.conceptList || [])
         .filter(cpt => (cpt.stockCodes || []).some(codeItem => normalizeCode(typeof codeItem === 'object' ? codeItem?.code : codeItem) === c))
@@ -112,11 +61,9 @@ export const useAlertCenterStore = defineStore('alertCenter', {
         type: 'stock',
         targetId: c,
         createdAt: Date.now(),
-        quoteBaseline: useDemoBaseline
-          ? buildDemoStockQuoteBaseline(currentQuote, demoProfile)
-          : { ...currentQuote },
+        quoteBaseline: { ...currentQuote },
         conceptIds: relatedConceptIds,
-        simulationMode: useDemoBaseline ? demoProfile : 'live'
+        simulationMode: 'live'
       }
     },
 
@@ -134,8 +81,6 @@ export const useAlertCenterStore = defineStore('alertCenter', {
       const key = targetKey('concept', sid)
 
       const conceptStore = useConceptStore()
-      const stockStore = useStockStore()
-      const useDemoBaseline = !!stockStore.useMock
       const concept = conceptStore.getConceptById?.(sid)
       const metrics = (conceptStore.conceptOverviewAll || []).find(x => String(x.id) === sid) || concept || {}
 
@@ -143,16 +88,14 @@ export const useAlertCenterStore = defineStore('alertCenter', {
         type: 'concept',
         targetId: sid,
         createdAt: Date.now(),
-        metricsBaseline: useDemoBaseline
-          ? buildDemoConceptMetricsBaseline(metrics)
-          : {
-              change: metrics.change ?? 0,
-              netInflow: metrics.netInflow ?? 0,
-              upRatio: metrics.upRatio ?? 0,
-              strength: metrics.strength ?? 0,
-              spike5m: metrics.spike5m ?? 0
-            },
-        simulationMode: useDemoBaseline ? 'demo-reversal' : 'live'
+        metricsBaseline: {
+          change: metrics.change ?? 0,
+          netInflow: metrics.netInflow ?? 0,
+          upRatio: metrics.upRatio ?? 0,
+          strength: metrics.strength ?? 0,
+          spike5m: metrics.spike5m ?? 0
+        },
+        simulationMode: 'live'
       }
     },
 

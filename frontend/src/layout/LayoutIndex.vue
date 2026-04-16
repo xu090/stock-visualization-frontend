@@ -41,6 +41,11 @@ import Header from './Header.vue'
 import Sidebar from './Sidebar.vue'
 import StrategyDock from './StrategyDock.vue'
 import NewsPanel from '@/components/NewsPanel.vue'
+import { useConceptMacroStore } from '@/stores/conceptMacro'
+import { useConceptStore } from '@/stores/concept'
+import { useNewsStore } from '@/stores/news'
+import { useStockStore } from '@/stores/stock'
+import { useStrategyStore } from '@/stores/strategy'
 
 export default {
   name: 'LayoutIndex',
@@ -54,6 +59,9 @@ export default {
     return {
       headerHeight: '45px'
     }
+  },
+  mounted() {
+    this.bootstrapRealData()
   },
   computed: {
     showStrategy() {
@@ -74,6 +82,33 @@ export default {
         p === '/industry' ||
         p.startsWith('/industry/')
       )
+    }
+  },
+  methods: {
+    async bootstrapRealData() {
+      const conceptStore = useConceptStore()
+      const stockStore = useStockStore()
+      const newsStore = useNewsStore()
+      const strategyStore = useStrategyStore()
+      const macroStore = useConceptMacroStore()
+
+      try {
+        await Promise.allSettled([
+          conceptStore.ensureLoaded(),
+          strategyStore.ensureLoaded()
+        ])
+
+        const firstConcept = conceptStore.conceptList?.[0]
+        const firstCodes = (firstConcept?.stockCodes || []).slice(0, 80)
+
+        await Promise.allSettled([
+          firstCodes.length ? stockStore.fetchQuotes(firstCodes) : Promise.resolve(),
+          newsStore.fetchFeed(firstConcept?.id || 'semiconductor'),
+          macroStore.fetchMacroData()
+        ])
+      } catch (error) {
+        console.warn('初始化真实数据失败', error)
+      }
     }
   }
 }
