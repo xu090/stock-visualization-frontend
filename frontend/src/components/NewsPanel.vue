@@ -1,51 +1,28 @@
 ﻿<template>
   <!-- ✅ 给整体加一个锚点：用于新手教程聚焦“新闻条” -->
   <div class="newsbar" id="tour-news">
-    <!-- 左：政策新闻 -->
-    <div class="col">
+    <div class="col newsbar-single">
       <div class="badge">
-        <span class="dot"></span>
-        <span class="label">政策</span>
+        <span class="dot" :class="{ dot2: isConceptDetailRoute }"></span>
+        <span class="label">{{ singleBarLabel }}</span>
       </div>
 
-      <!-- ✅ 更精准：把“打开详情”的锚点挂在可点击区域上 -->
-      <div class="ticker" @click="openDetail(currentPolicy)">
-        <span class="title" :title="currentPolicy?.title || ''">
-          {{ currentPolicy?.title || '暂无政策新闻' }}
+      <div class="ticker" id="tour-news-open-dynamic" @click="openDetail(currentHeadline)">
+        <span class="title" :title="currentHeadline?.title || ''">
+          {{ currentHeadline?.title || emptyTickerText }}
         </span>
-        <span class="meta" v-if="currentPolicy">
-          {{ currentPolicy.source }} · {{ formatTime(currentPolicy.time) }}
-        </span>
-      </div>
-    </div>
-
-    <div class="split"></div>
-
-    <!-- 右：概念动态新闻 -->
-    <div class="col right-col" id="tour-news-dynamic">
-      <div class="badge">
-        <span class="dot dot2"></span>
-        <span class="label">{{ rightLabel }}</span>
-      </div>
-
-      <!-- ✅ 同样把锚点挂在可点击区域上 -->
-      <div class="ticker" id="tour-news-open-dynamic" @click="openDetail(currentDynamic)">
-        <span class="title" :title="currentDynamic?.title || ''">
-          {{ currentDynamic?.title || '暂无相关新闻' }}
-        </span>
-        <span class="meta" v-if="currentDynamic">
-          {{ currentDynamic.source }} · {{ formatTime(currentDynamic.time) }}
+        <span class="meta" v-if="currentHeadline">
+          {{ currentHeadline.source }} · {{ formatTime(currentHeadline.time) }}
         </span>
       </div>
 
-      <!-- ✅ 新闻列表按钮锚点 -->
       <el-tooltip content="查看列表" placement="top" effect="dark">
         <el-button
           id="tour-news-list"
           class="list-btn"
           text
           circle
-          @click.stop="openListDrawer"
+          @click.stop="openListDialog"
           aria-label="open news list"
         >
           <el-icon><List /></el-icon>
@@ -56,7 +33,7 @@
     <!-- ✅ 新闻详情弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      width="700px"
+      width="810px"
       class="news-detail-dialog"
       draggable
       append-to-body
@@ -69,19 +46,27 @@
 
           <div class="nd-sub">
             <el-tag size="small" effect="plain" type="info" class="nd-tag">
-              {{ current?.category || '新闻' }}
+              {{ current?.displayCategory || current?.category || '新闻' }}
             </el-tag>
 
-            <template v-if="detailConcepts.length">
+            <el-tag
+              v-if="current?.sourceDetail && current.sourceDetail !== current.source"
+              size="small"
+              effect="plain"
+              class="nd-tag"
+            >
+              {{ current.sourceDetail }}
+            </el-tag>
+
+            <template v-if="detailStocks.length">
               <el-tag
-                v-for="c in detailConcepts"
-                :key="c.id"
+                v-for="code in detailStocks"
+                :key="code"
                 size="small"
                 effect="plain"
-                class="nd-tag nd-tag-concept"
-                :title="`关联概念：${c.name}`"
+                class="nd-tag nd-tag-stock"
               >
-                {{ c.name }}
+                {{ code }}
               </el-tag>
             </template>
 
@@ -93,6 +78,11 @@
       </template>
 
       <div v-if="current" class="nd-body">
+        <div class="nd-card" v-if="current.brief">
+          <div class="nd-card-title">摘要</div>
+          <div class="nd-brief">{{ current.brief }}</div>
+        </div>
+
         <div
           class="nd-grid"
           v-if="(current.keyPoints?.length || 0) + (current.whatToWatch?.length || 0) > 0"
@@ -112,48 +102,82 @@
           </div>
         </div>
 
-        <div class="nd-content">
+        <div class="nd-content" v-if="detailHtml" v-html="detailHtml"></div>
+        <div class="nd-content" v-else>
           <p v-for="(p, idx) in (current.content || [])" :key="idx">{{ p }}</p>
         </div>
       </div>
 
       <template #footer>
-        <div class="nd-footer">
+        <div class="nd-footer-wrap">
+          <div v-if="relatedConceptCards.length" class="nd-related">
+            <div class="nd-related-title">关联概念</div>
+            <div class="nd-related-list">
+              <div
+                v-for="card in relatedConceptCards"
+                :key="card.id"
+                class="nd-related-card"
+              >
+                <div class="nd-related-main">
+                  <div class="nd-related-name">{{ card.name }}</div>
+                  <div class="nd-related-metrics">
+                    <span class="nd-related-change" :class="changeClass(card.change)">
+                      {{ formatSigned(card.change) }}
+                    </span>
+                    <span class="nd-related-rate" :class="changeClass(card.change)">
+                      {{ formatPercent(card.changePercent) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="nd-footer">
           <!-- ✅ 新手教程：讲“查看相关概念（联动）” -->
-          <el-button
-            v-if="(current?.conceptIds || []).length"
-            id="tour-news-apply"
-            type="primary"
-            plain
-            class="nd-apply"
-            @click="applyRelatedConcepts"
-          >
-            查看相关概念
-          </el-button>
+            <el-button
+              v-if="(current?.conceptIds || []).length"
+              id="tour-news-apply"
+              type="primary"
+              plain
+              class="nd-apply"
+              @click="applyRelatedConcepts"
+            >
+              查看相关概念
+            </el-button>
 
           <!-- ✅ 新手教程：讲“清空新闻关联（恢复）” -->
-          <el-button
-            v-if="activeIds.length"
-            id="tour-news-clear"
-            type="warning"
-            plain
-            class="nd-apply"
-            @click="clearActiveFilter"
-          >
-            清空新闻关联
-          </el-button>
-
-          <el-button class="nd-close" @click="dialogVisible = false">关闭</el-button>
+            <el-button class="nd-close" @click="dialogVisible = false">关闭</el-button>
+          </div>
         </div>
       </template>
     </el-dialog>
 
-    <!-- ✅ 列表抽屉 -->
-    <el-drawer v-model="drawerVisible" title="新闻列表" size="460px" append-to-body>
-      <el-tabs v-model="drawerTab" class="drawer-tabs">
-        <el-tab-pane label="政策" name="policy" />
-        <el-tab-pane :label="rightLabel" name="dynamic" />
-      </el-tabs>
+    <el-dialog
+      v-model="listDialogVisible"
+      :title="drawerTitle"
+      width="760px"
+      class="news-list-dialog"
+      append-to-body
+      draggable
+    >
+      <div v-if="showConceptFilter" class="drawer-filter-bar">
+        <el-select
+          v-model="drawerConceptFilter"
+          size="small"
+          clearable
+          filterable
+          placeholder="筛选概念"
+          class="drawer-filter-select"
+        >
+          <el-option
+            v-for="item in conceptFilterOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </div>
 
       <!-- ✅ 新手教程：抽屉列表区域锚点 -->
       <div class="drawer-list scroll-hidden" id="tour-news-drawer">
@@ -164,7 +188,7 @@
           @click="openFromList(i)"
         >
           <div class="di-title">
-            <span class="di-dot" :class="{ d2: drawerTab === 'dynamic' }"></span>
+            <span class="di-dot" :class="{ d2: isConceptDetailRoute }"></span>
             <span class="di-text" :title="n.title">{{ n.title }}</span>
           </div>
 
@@ -183,13 +207,13 @@
 
         <div v-if="drawerList.length === 0" class="drawer-empty">暂无数据</div>
       </div>
-    </el-drawer>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, defineEmits, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { List } from '@element-plus/icons-vue'
 import { useNewsStore } from '@/stores/news'
 import { useConceptStore } from '@/stores/concept'
@@ -205,33 +229,74 @@ const emit = defineEmits(['apply-concept-filter', 'clear-concept-filter'])
 const newsStore = useNewsStore()
 const conceptStore = useConceptStore()
 const homeFilter = useHomeFilterStore()
+const route = useRoute()
 const router = useRouter()
 
-/** ✅ 统一从 store 读“新闻关联筛选” */
-const activeIds = computed(() => {
-  const ids = homeFilter.newsConceptIds
-  return Array.isArray(ids) ? ids : []
+const isConceptDetailRoute = computed(() => {
+  const path = route.path || ''
+  return path.startsWith('/concept/') || path.startsWith('/my-concept/')
+})
+
+const routeConceptId = computed(() => {
+  if (!isConceptDetailRoute.value) return ''
+  return String(route.params.id || '')
 })
 
 const policyIdx = ref(0)
 const dynamicIdx = ref(0)
 
 const currentPolicy = computed(() => {
-  const list = newsStore.policyNews || []
+  const list = isConceptDetailRoute.value ? currentConceptNews.value : (newsStore.policyNews || [])
   if (!list.length) return null
   return list[mod(policyIdx.value, list.length)]
 })
 
 const currentDynamic = computed(() => {
-  const list = newsStore.dynamicNews || []
+  const list = currentDynamicPool.value
   if (!list.length) return null
   return list[mod(dynamicIdx.value, list.length)]
 })
 
+const currentHeadline = computed(() => {
+  return isConceptDetailRoute.value ? currentDynamic.value : currentPolicy.value
+})
+
+const currentConceptNews = computed(() => {
+  const id = routeConceptId.value || newsStore.currentConceptId || newsStore.context?.conceptId
+  if (!id) return []
+  return (newsStore.allNews || []).filter(item => (item.conceptIds || []).includes(String(id)))
+})
+
+const currentDynamicPool = computed(() => {
+  return isConceptDetailRoute.value ? currentConceptNews.value : (newsStore.dynamicNews || [])
+})
+
+const routeConceptName = computed(() => {
+  const id = routeConceptId.value
+  if (!id) return ''
+  return conceptNameById(id) || id
+})
+
+const leftLabel = computed(() => {
+  if (isConceptDetailRoute.value) return routeConceptName.value || '概念新闻'
+  return newsStore.leftLabel || '要闻'
+})
+
+const singleBarLabel = computed(() => {
+  return isConceptDetailRoute.value ? rightLabel.value : leftLabel.value
+})
+
 const rightLabel = computed(() => {
+  if (isConceptDetailRoute.value) return routeConceptName.value || '概念新闻'
   const cid = newsStore.currentConceptId || newsStore.context?.conceptId
   const name = conceptNameById(cid)
   return `概念 · ${name || '—'}`
+})
+
+const emptyTickerText = computed(() => {
+  return isConceptDetailRoute.value
+    ? `暂无${routeConceptName.value || '该概念'}相关新闻`
+    : '暂无相关新闻'
 })
 
 let timer = null
@@ -252,9 +317,21 @@ onUnmounted(() => {
 watch(
   () => newsStore.context?.conceptId,
   () => {
+    if (isConceptDetailRoute.value) return
     if (typeof newsStore.refreshDynamicNews === 'function') newsStore.refreshDynamicNews()
     dynamicIdx.value = 0
   }
+)
+
+watch(
+  routeConceptId,
+  value => {
+    if (!value) return
+    if (typeof newsStore.setConceptId === 'function') newsStore.setConceptId(String(value))
+    policyIdx.value = 0
+    dynamicIdx.value = 0
+  },
+  { immediate: true }
 )
 
 /** 详情弹窗 */
@@ -267,9 +344,31 @@ function openDetail(item) {
   dialogVisible.value = true
 }
 
-const detailConcepts = computed(() => {
-  const ids = (current.value?.conceptIds || []).filter(Boolean)
-  return ids.map(id => ({ id, name: conceptNameById(id) || String(id) }))
+const detailStocks = computed(() => {
+  return (current.value?.relatedStocks || current.value?.stockCodes || []).filter(Boolean)
+})
+
+const detailHtml = computed(() => {
+  return String(current.value?.contentHtml || '').trim()
+})
+
+const relatedConceptCards = computed(() => {
+  const ids = Array.from(new Set((current.value?.conceptIds || []).map(id => String(id)).filter(Boolean)))
+  if (!ids.length) return []
+  const pool = conceptStore.conceptOverviewAll || []
+  return ids
+    .map(id => {
+      const hit = pool.find(item => String(item.id) === id)
+      if (!hit) return null
+      const change = Number(hit.change ?? hit.rtChange ?? 0)
+      return {
+        id,
+        name: hit.name || id,
+        change,
+        changePercent: change,
+      }
+    })
+    .filter(Boolean)
 })
 
 async function applyRelatedConcepts() {
@@ -296,33 +395,58 @@ async function applyRelatedConcepts() {
   }
 }
 
-function clearActiveFilter() {
-  homeFilter.newsConceptIds = []
-  emit('clear-concept-filter')
-}
+/** 列表弹窗 */
+const listDialogVisible = ref(false)
+const drawerConceptFilter = ref('')
 
-/** 抽屉 */
-const drawerVisible = ref(false)
-const drawerTab = ref('policy')
-
-const drawerList = computed(() => {
-  return drawerTab.value === 'policy'
-    ? (newsStore.policyNews || [])
-    : (newsStore.dynamicNews || [])
+const conceptFilterOptions = computed(() => {
+  const ids = new Set()
+  ;(newsStore.allNews || []).forEach(item => {
+    (item.conceptIds || []).forEach(id => {
+      if (id) ids.add(String(id))
+    })
+  })
+  return Array.from(ids)
+    .map(id => ({ value: id, label: conceptNameById(id) || id }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'))
 })
 
-function openListDrawer() {
-  drawerTab.value = (newsStore.dynamicNews?.length ? 'dynamic' : 'policy')
-  drawerVisible.value = true
+const filteredAllNews = computed(() => {
+  const list = newsStore.allNews || []
+  const conceptId = drawerConceptFilter.value ? String(drawerConceptFilter.value) : ''
+  if (!conceptId) return list
+  return list.filter(item => (item.conceptIds || []).includes(conceptId))
+})
+
+const showConceptFilter = computed(() => !isConceptDetailRoute.value)
+
+const drawerTitle = computed(() => {
+  if (isConceptDetailRoute.value) {
+    return `${routeConceptName.value || '概念'}新闻`
+  }
+  return '新闻列表'
+})
+
+const drawerList = computed(() => {
+  if (isConceptDetailRoute.value) return currentConceptNews.value
+  return filteredAllNews.value
+})
+
+function openListDialog() {
+  listDialogVisible.value = true
 }
 
 function openFromList(i) {
   const list = drawerList.value || []
   const item = list[i]
   if (!item) return
-  if (drawerTab.value === 'policy') policyIdx.value = i
-  else dynamicIdx.value = i
-  drawerVisible.value = false
+  if (isConceptDetailRoute.value) {
+    policyIdx.value = i
+    dynamicIdx.value = i
+  } else {
+    policyIdx.value = i
+  }
+  listDialogVisible.value = false
   openDetail(item)
 }
 
@@ -339,7 +463,34 @@ function mod(n, m) {
 
 function formatTime(t) {
   if (!t) return ''
-  return String(t).replace(/^\d{4}-/, '').slice(0, 11)
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return String(t)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${mm}-${dd} ${hh}:${mi}`
+}
+
+function formatSigned(v) {
+  const n = Number(v || 0)
+  if (n > 0) return `+${n.toFixed(2)}`
+  if (n < 0) return n.toFixed(2)
+  return '0.00'
+}
+
+function formatPercent(v) {
+  const n = Number(v || 0)
+  if (n > 0) return `+${n.toFixed(2)}%`
+  if (n < 0) return `${n.toFixed(2)}%`
+  return '0.00%'
+}
+
+function changeClass(v) {
+  const n = Number(v || 0)
+  if (n > 0) return 'up'
+  if (n < 0) return 'down'
+  return 'flat'
 }
 
 function conceptNameById(id) {
@@ -368,8 +519,7 @@ function conceptNameById(id) {
   overflow:hidden;
 }
 .col{ height:40px; display:flex; align-items:center; gap:8px; flex:1; min-width:0; padding:0 10px;}
-.right-col{ padding-right:6px;}
-.split{ width:1px; height:18px; background:rgba(0,0,0,.08); flex-shrink:0;}
+.newsbar-single{ width:100%; padding-right:6px; }
 .badge{ display:flex; align-items:center; gap:6px; flex-shrink:0; font-weight:900; color:#303133; font-size:12px;}
 .dot{ width:7px; height:7px; border-radius:999px; background:rgba(64,158,255,.9);}
 .dot2{ background:rgba(103,194,58,.95);}
@@ -385,7 +535,16 @@ function conceptNameById(id) {
 .scroll-hidden::-webkit-scrollbar{ width:0; height:0;}
 
 .drawer-tabs :deep(.el-tabs__header){ margin:0 0 8px 0;}
-.drawer-list{ height:calc(100vh - 160px); overflow-y:auto; padding:6px 2px 10px;}
+.drawer-filter-bar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  margin:0 0 8px 0;
+}
+.drawer-filter-select{
+  width:180px;
+}
+.drawer-list{ height:520px; overflow-y:auto; padding:6px 2px 10px;}
 .drawer-item{
   padding:10px 10px; border-radius:10px; border:1px solid rgba(0,0,0,.06);
   background:#fff; box-shadow:0 6px 14px rgba(0,0,0,.04);
@@ -411,8 +570,22 @@ function conceptNameById(id) {
 .sep{ opacity:.6;}
 .drawer-empty{ padding:16px 10px; color:#b0b4bb; font-size:12px; text-align:center;}
 
+.news-list-dialog :deep(.el-dialog){
+  height:680px;
+  max-height:680px;
+  border-radius:14px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.news-list-dialog :deep(.el-dialog__body){
+  padding:14px 18px 16px;
+  flex:1 1 auto;
+  overflow:hidden;
+}
+
 .news-detail-dialog :deep(.el-dialog){
-  height:800px; border-radius:14px; overflow:hidden;
+  width:810px !important; min-width:810px; max-width:810px; height:720px; min-height:720px; max-height:720px; border-radius:14px; overflow:hidden;
   box-shadow:0 18px 60px rgba(0,0,0,.18);
   display:flex; flex-direction:column;
 }
@@ -432,6 +605,7 @@ function conceptNameById(id) {
 .nd-sub{ display:flex; align-items:center; flex-wrap:wrap; gap:8px;}
 .nd-tag{ border-radius:999px; font-weight:900;}
 .nd-tag-concept{ border-color:rgba(64,158,255,.22); background:rgba(64,158,255,.08); color:#409eff;}
+.nd-tag-stock{ border-color:rgba(103,194,58,.24); background:rgba(103,194,58,.08); color:#389e0d;}
 .nd-meta{ font-size:12px; color:#6b7280; font-weight:700;}
 .nd-dot{ color:#c0c4cc;}
 .nd-body{ display:flex; flex-direction:column; gap:14px;}
@@ -439,11 +613,62 @@ function conceptNameById(id) {
 @media (max-width:720px){ .nd-grid{ grid-template-columns:1fr; } }
 .nd-card{ border:1px solid rgba(0,0,0,.06); background:rgba(0,0,0,.02); border-radius:12px; padding:10px 12px;}
 .nd-card-title{ font-size:12px; font-weight:900; color:#374151; margin-bottom:6px;}
+.nd-brief{ color:#303133; font-size:13px; line-height:1.8; }
 .nd-list{ margin:0; padding-left:18px; color:#303133; font-size:13px; line-height:1.7;}
 .nd-list li{ margin:3px 0;}
 .nd-content{ color:#303133; font-size:14px; line-height:1.85;}
 .nd-content p{ margin:0 0 12px 0;}
+.nd-content :deep(p){ margin:0 0 12px 0; }
+.nd-content :deep(strong){ font-weight:900; }
+.nd-content :deep(br){ line-height:1.85; }
+.nd-footer-wrap{ display:flex; flex-direction:column; gap:14px; }
+.nd-related{ display:flex; flex-direction:column; gap:10px; align-items:stretch; }
+.nd-related-title{ font-size:12px; font-weight:900; color:#6b7280; text-align:left; padding-left:2px; }
+.nd-related-list{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+.nd-related-card{
+  border:1px solid rgba(0,0,0,.06);
+  background:#fff;
+  border-radius:12px;
+  padding:10px 14px;
+  min-height:unset;
+}
+.nd-related-main{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  width:100%;
+}
+.nd-related-name{
+  flex:1 1 auto;
+  min-width:0;
+  font-size:15px;
+  font-weight:900;
+  color:#1f2d3d;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  text-align:left;
+}
+.nd-related-metrics{
+  flex:0 0 auto;
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.nd-related-change,.nd-related-rate{ font-size:14px; }
+.up{ color:#f56c6c; }
+.down{ color:#16a34a; }
+.flat{ color:#6b7280; }
 .nd-footer{ display:flex; justify-content:flex-end; gap:10px; }
 .nd-apply{ border-radius:10px; font-weight:800; }
 .nd-close{ border-radius:10px; font-weight:800; }
+@media (max-width:900px){
+  .news-detail-dialog :deep(.el-dialog){ width:calc(100vw - 24px) !important; max-width:calc(100vw - 24px); height:calc(100vh - 32px); max-height:calc(100vh - 32px); }
+  .news-list-dialog :deep(.el-dialog){ width:calc(100vw - 24px) !important; max-width:calc(100vw - 24px); height:calc(100vh - 32px); max-height:calc(100vh - 32px); }
+  .nd-related-list{ grid-template-columns:1fr; }
+}
 </style>

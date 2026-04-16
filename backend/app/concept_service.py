@@ -1,11 +1,104 @@
 from typing import Any
 
 from app.db import get_conn
+from app.stock_names import get_stock_name
 
 
 def _safe_num(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
+
+
+def _normalize_code(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    text = str(raw).strip()
+    if not text:
+        return ""
+    if "." in text:
+        text = text.split(".")[0]
+    if text[:2].lower() in {"sh", "sz", "bj"}:
+        text = text[2:]
+    return text
+
+
+def _infer_market_code(code: str) -> str:
+    if code.startswith(("600", "601", "603", "605", "688")):
+        return "SH"
+    if code.startswith(("000", "001", "002", "003", "300", "301", "302")):
+        return "SZ"
+    if code.startswith(("430", "830", "831", "832", "833", "835", "836", "837", "838", "839", "871", "873", "920")):
+        return "BJ"
+    return ""
+
+
+def _normalize_stock_codes(codes: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in codes or []:
+        code = _normalize_code(item)
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        normalized.append(code)
+    return normalized
+
+
+def _map_concept_row(row: dict, stock_codes: list[str] | None = None) -> dict:
+    result = {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"],
+        "algorithm": row["algorithm"],
+        "editable": row["editable"],
+        "favorite": row["favorite"],
+        "source": row.get("source"),
+    }
+    if stock_codes is not None:
+        result["stockCodes"] = stock_codes
+    return result
+
+
+def _ensure_stock_rows(cur, stock_codes: list[str]) -> None:
+    for code in stock_codes:
+        cur.execute(
+            """
+            INSERT INTO stocks (code, name, market_code, is_active, created_at, updated_at)
+            VALUES (%s, %s, %s, TRUE, NOW(), NOW())
+            ON CONFLICT (code) DO UPDATE
+            SET name = COALESCE(NULLIF(stocks.name, ''), EXCLUDED.name),
+                market_code = COALESCE(NULLIF(stocks.market_code, ''), EXCLUDED.market_code),
+                updated_at = NOW()
+            """,
+            (code, get_stock_name(code), _infer_market_code(code)),
+        )
+
+
+def _replace_concept_stocks(cur, concept_id: str, stock_codes: list[str]) -> None:
+    cur.execute("DELETE FROM concept_stocks WHERE concept_id = %s", (concept_id,))
+    for sort_order, code in enumerate(stock_codes, start=1):
+        cur.execute(
+            """
+            INSERT INTO concept_stocks (concept_id, stock_code, sort_order, created_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (concept_id, stock_code) DO UPDATE
+            SET sort_order = EXCLUDED.sort_order
+            """,
+            (concept_id, code, sort_order),
+        )
+
+
+def _fetch_concept_stock_codes(cur, concept_id: str) -> list[str]:
+    cur.execute(
+        """
+        SELECT stock_code
+        FROM concept_stocks
+        WHERE concept_id = %s
+        ORDER BY sort_order ASC, stock_code ASC
+        """,
+        (concept_id,),
+    )
+    return [row["stock_code"] for row in cur.fetchall()]
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -35,6 +128,8 @@ def fetch_concept_overview() -> list[dict]:
             c.algorithm,
             c.editable,
             c.favorite,
+            ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
+                FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
             COUNT(cs.stock_code) AS stock_count,
             COUNT(ls.stock_code) AS active_stock_count,
             AVG(ls.udf) AS change,
@@ -71,6 +166,7 @@ def fetch_concept_overview() -> list[dict]:
                 "algorithm": row["algorithm"],
                 "editable": row["editable"],
                 "favorite": row["favorite"],
+                "stockCodes": row["stock_codes"] or [],
                 "stockCount": row["stock_count"],
                 "activeStockCount": row["active_stock_count"],
                 "change": round(change, 2),
@@ -108,6 +204,153 @@ def fetch_concept_detail(concept_id: str) -> dict | None:
         "editable": row["editable"],
         "favorite": row["favorite"],
     }
+
+
+def fetch_concept_profile(concept_id: str) -> dict | None:
+    sql = """
+        SELECT id, name, description, algorithm, editable, favorite, source
+        FROM concepts
+        WHERE id = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (concept_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            stock_codes = _fetch_concept_stock_codes(cur, concept_id)
+    return _map_concept_row(row, stock_codes)
+
+
+def create_user_concept(payload: dict) -> dict:
+    concept_id = str(payload.get("id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not concept_id:
+        raise ValueError("concept id is required")
+    if not name:
+        raise ValueError("concept name is required")
+
+    stock_codes = _normalize_stock_codes(payload.get("stockCodes"))
+    description = str(payload.get("description") or "").strip()
+    algorithm = str(payload.get("algorithm") or "").strip()
+    favorite = bool(payload.get("favorite", False))
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM concepts WHERE id = %s", (concept_id,))
+            if cur.fetchone():
+                raise FileExistsError("concept already exists")
+
+            _ensure_stock_rows(cur, stock_codes)
+            cur.execute(
+                """
+                INSERT INTO concepts (
+                    id, name, description, algorithm, editable, favorite, source, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, TRUE, %s, 'user', NOW(), NOW())
+                RETURNING id, name, description, algorithm, editable, favorite, source
+                """,
+                (concept_id, name, description, algorithm, favorite),
+            )
+            row = cur.fetchone()
+            _replace_concept_stocks(cur, concept_id, stock_codes)
+        conn.commit()
+
+    return _map_concept_row(row, stock_codes)
+
+
+def update_user_concept(concept_id: str, payload: dict) -> dict | None:
+    concept_id = str(concept_id or "").strip()
+    if not concept_id:
+        return None
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, editable FROM concepts WHERE id = %s",
+                (concept_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                return None
+            if not existing["editable"]:
+                raise PermissionError("system concept cannot be modified")
+
+            fields: list[str] = []
+            params: list[object] = []
+            if "name" in payload:
+                name = str(payload.get("name") or "").strip()
+                if not name:
+                    raise ValueError("concept name is required")
+                fields.append("name = %s")
+                params.append(name)
+            if "description" in payload:
+                fields.append("description = %s")
+                params.append(str(payload.get("description") or "").strip())
+            if "algorithm" in payload:
+                fields.append("algorithm = %s")
+                params.append(str(payload.get("algorithm") or "").strip())
+            if "favorite" in payload:
+                fields.append("favorite = %s")
+                params.append(bool(payload.get("favorite")))
+
+            stock_codes: list[str] | None = None
+            if "stockCodes" in payload:
+                stock_codes = _normalize_stock_codes(payload.get("stockCodes"))
+                _ensure_stock_rows(cur, stock_codes)
+                _replace_concept_stocks(cur, concept_id, stock_codes)
+                cur.execute("UPDATE concepts SET updated_at = NOW() WHERE id = %s", (concept_id,))
+
+            if fields:
+                fields.append("updated_at = NOW()")
+                params.append(concept_id)
+                cur.execute(
+                    f"""
+                    UPDATE concepts
+                    SET {', '.join(fields)}
+                    WHERE id = %s
+                    RETURNING id, name, description, algorithm, editable, favorite, source
+                    """,
+                    tuple(params),
+                )
+                row = cur.fetchone()
+            else:
+                cur.execute(
+                    """
+                    SELECT id, name, description, algorithm, editable, favorite, source
+                    FROM concepts
+                    WHERE id = %s
+                    """,
+                    (concept_id,),
+                )
+                row = cur.fetchone()
+
+            if stock_codes is None:
+                stock_codes = _fetch_concept_stock_codes(cur, concept_id)
+        conn.commit()
+
+    return _map_concept_row(row, stock_codes)
+
+
+def delete_user_concept(concept_id: str) -> bool:
+    concept_id = str(concept_id or "").strip()
+    if not concept_id:
+        return False
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT editable FROM concepts WHERE id = %s", (concept_id,))
+            row = cur.fetchone()
+            if not row:
+                return False
+            if not row["editable"]:
+                raise PermissionError("system concept cannot be deleted")
+
+            cur.execute("DELETE FROM concept_stocks WHERE concept_id = %s", (concept_id,))
+            cur.execute("DELETE FROM concepts WHERE id = %s", (concept_id,))
+        conn.commit()
+
+    return True
 
 
 def fetch_concept_stocks(concept_id: str) -> list[dict]:

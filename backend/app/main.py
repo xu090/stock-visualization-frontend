@@ -8,15 +8,19 @@ from pydantic import BaseModel
 from app.config import AUTO_BOOTSTRAP_CONCEPTS, ENABLE_KAFKA_CONSUMER
 from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
 from app.concept_service import (
+    create_user_concept,
+    delete_user_concept,
     fetch_concept_detail,
     fetch_concept_overview,
     fetch_concept_stocks,
     fetch_concept_time_sharing,
+    update_user_concept,
 )
 from app.db import get_conn
 from app.kafka_consumer import run_event_consumer, run_stock_time_sharing_consumer
-from app.news_service import fetch_news_detail, fetch_news_list
+from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_list
 from app.stock_names import backfill_stock_names
+from app.stock_service import fetch_stock_detail, search_stocks
 from app.strategy_service import (
     bootstrap_select_strategies,
     create_select_strategy,
@@ -49,6 +53,23 @@ class SelectStrategyPatch(BaseModel):
     isCustom: bool | None = None
     enabled: bool | None = None
     snapshot: dict | None = None
+
+
+class ConceptPayload(BaseModel):
+    id: str
+    name: str
+    description: str | None = ""
+    stockCodes: list[str] = []
+    algorithm: str | None = ""
+    favorite: bool = False
+
+
+class ConceptPatch(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    stockCodes: list[str] | None = None
+    algorithm: str | None = None
+    favorite: bool | None = None
 
 
 def normalize_code(raw: str | None) -> str:
@@ -227,6 +248,20 @@ def get_quotes(payload: QuoteRequest) -> dict:
     return {"data": rows}
 
 
+@app.get("/api/stocks/search")
+def search_stock_api(q: str, limit: int = 20) -> dict:
+    rows = search_stocks(q, min(max(limit, 1), 50))
+    return {"data": rows}
+
+
+@app.get("/api/stocks/{code}")
+def get_stock_detail_api(code: str) -> dict:
+    row = fetch_stock_detail(normalize_code(code))
+    if row is None:
+        raise HTTPException(status_code=404, detail="stock not found")
+    return {"data": row}
+
+
 @app.get("/api/stocks/{code}/timesharing")
 def get_stock_time_sharing(code: str, limit: int = 120) -> dict:
     # 对 limit 做边界保护，避免一次查太多分钟数据。
@@ -241,16 +276,59 @@ def get_concepts_overview() -> dict:
     return {"data": rows}
 
 
+@app.post("/api/concepts")
+def post_concept(payload: ConceptPayload) -> dict:
+    try:
+        row = create_user_concept(payload.model_dump())
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"data": row}
+
+
 @app.get("/api/concepts/{concept_id}")
 def get_concept(concept_id: str) -> dict:
     concept = fetch_concept_detail(concept_id)
+    if concept is None:
+        raise HTTPException(status_code=404, detail="concept not found")
     stocks = fetch_concept_stocks(concept_id)
     return {"data": {"concept": concept, "stocks": stocks}}
+
+
+@app.patch("/api/concepts/{concept_id}")
+def patch_concept(concept_id: str, payload: ConceptPatch) -> dict:
+    try:
+        row = update_user_concept(concept_id, payload.model_dump(exclude_none=True))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
+@app.delete("/api/concepts/{concept_id}")
+def remove_concept(concept_id: str) -> dict:
+    try:
+        deleted = delete_user_concept(concept_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"ok": True}
 
 
 @app.get("/api/concepts/{concept_id}/timesharing")
 def get_concept_time_sharing(concept_id: str, limit: int = 120) -> dict:
     rows = fetch_concept_time_sharing(concept_id, min(max(limit, 1), 240))
+    return {"data": rows}
+
+
+@app.get("/api/concepts/{concept_id}/news")
+def get_concept_news_api(concept_id: str, limit: int = 20) -> dict:
+    rows = fetch_concept_news(concept_id, min(max(limit, 1), 100))
     return {"data": rows}
 
 

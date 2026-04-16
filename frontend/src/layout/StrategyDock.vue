@@ -23,6 +23,7 @@
               :key="`fav-${s.id}`"
               class="strategy-item"
               :class="{ applied: s.id === currentAppliedSelectId }"
+              @click="openAllStrategiesAt(s)"
             >
               <div class="s-main">
                 <div class="s-line1">
@@ -82,6 +83,7 @@
               :key="`custom-${s.id}`"
               class="strategy-item"
               :class="{ applied: s.id === currentAppliedSelectId }"
+              @click="openAllStrategiesAt(s)"
             >
               <div class="s-main">
                 <div class="s-line1">
@@ -217,7 +219,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
@@ -400,6 +402,22 @@ const filtersTextShort = snap => {
 const allDialogVisible = ref(false)
 const allDialogRef = ref(null)
 
+const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms))
+
+const openAllStrategiesAt = async strategy => {
+  if (!strategy?.id) {
+    allDialogVisible.value = true
+    return
+  }
+  allDialogVisible.value = true
+  await nextTick()
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const focused = await allDialogRef.value?.focusStrategyCard?.('select', strategy.id)
+    if (focused) return
+    await wait(80)
+  }
+}
+
 const onAllDialogToggleFavorite = ({ strategy }) => toggleFavorite(strategy)
 const onAllDialogToggleApply = ({ strategy }) => toggleApply(strategy)
 const onAllDialogEdit = ({ strategy }) => openEdit(strategy)
@@ -548,6 +566,14 @@ const submitEdit = () => {
   border: 1px solid rgba(148, 163, 184, 0.24);
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.04);
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.strategy-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+  border-color: rgba(64, 158, 255, 0.28);
 }
 
 .strategy-item.applied::before {
