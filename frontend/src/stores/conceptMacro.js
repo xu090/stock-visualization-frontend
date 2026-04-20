@@ -188,8 +188,7 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
   actions: {
     async fetchMacroData() {
       const conceptStore = useConceptStore()
-      await conceptStore.ensureLoaded?.()
-      await conceptStore.refreshConceptMacros?.()
+      await conceptStore.ensureLoaded?.(true)
       this.ensureSelectedCategory()
     },
 

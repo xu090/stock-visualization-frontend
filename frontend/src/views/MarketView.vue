@@ -2,7 +2,6 @@
   <div class="market-shell">
     <div class="market-page">
       <div class="market-view">
-        <!-- Header -->
         <div class="market-header">
           <div class="title-wrap">
             <div class="market-title">
@@ -22,7 +21,6 @@
               </el-tooltip>
             </div>
 
-            <!-- 概览条 -->
             <div class="overview-bar">
               <div class="ov-item">
                 <span class="ov-k">成分股</span>
@@ -44,7 +42,6 @@
                   {{ formatPct(avgChg) }}
                 </span>
               </div>
-
               <div class="ov-item ov-leader" v-if="leaderStock">
                 <span class="ov-k">领涨</span>
                 <span class="ov-v leader">
@@ -56,7 +53,6 @@
           </div>
         </div>
 
-        <!-- 9宫格 -->
         <div class="metric-grid">
           <div
             v-for="item in detailList"
@@ -69,11 +65,13 @@
           </div>
         </div>
 
-        <!-- 图表区 -->
         <div class="panel-row">
           <div class="panel-card">
             <div class="panel-title">资金流向</div>
             <div ref="fundChartRef" class="chart chart-fund"></div>
+            <div v-if="capitalFlow?.derived" class="chart-note">
+              基于成交额和涨跌幅推导的代理值。
+            </div>
           </div>
 
           <div class="panel-card">
@@ -88,70 +86,16 @@
             <div ref="klineChartRef" class="chart chart-kline"></div>
           </div>
         </div>
-<!-- 成分股列表 -->
-        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" v-model:analysisWindow="analysisWindow" />
-        <ConceptStockMergedTable :concept="concept" :stocks="stocks" :analysis-window="analysisWindow" />
-        <div v-if="false" class="panel-card table-panel">
+
+
+        <ConceptStockMergedTable
+          :concept="concept"
+          :stocks="stocks"
+          :analysis-window="analysisWindow"
+        />
+
+        <div class="panel-card table-panel">
           <div class="panel-title">成分股列表</div>
-
-          <div class="panel-header table-head">
-            <div class="panel-title">成分股列表</div>
-          </div>
-
-          <div class="table-filter-bar">
-            <el-input
-              v-model="query.keyword"
-              size="small"
-              clearable
-              placeholder="搜索股票名称/代码"
-              style="width: 220px"
-            />
-            <el-select
-              v-model="query.correlation"
-              size="small"
-              placeholder="相关性"
-              style="width: 130px"
-            >
-              <el-option label="相关性全部" value="" />
-              <el-option label="正相关" value="strong-positive" />
-              <el-option label="弱相关" value="weak-positive" />
-              <el-option label="不相关" value="neutral" />
-              <el-option label="负相关" value="negative" />
-            </el-select>
-            <el-select
-              v-model="query.direction"
-              size="small"
-              placeholder="涨跌方向"
-              style="width: 120px"
-            >
-              <el-option label="涨跌全部" value="" />
-              <el-option label="上涨" value="up" />
-              <el-option label="下跌" value="down" />
-              <el-option label="震荡" value="flat" />
-            </el-select>
-            <el-select
-              v-model="query.maPattern"
-              size="small"
-              placeholder="均线形态"
-              style="width: 150px"
-            >
-              <el-option label="均线形态全部" value="" />
-              <el-option v-for="item in maPatternOptions" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-            <el-button size="small" plain @click="resetFilters">重置筛选</el-button>
-          </div>
-
-          <div class="table-tags">
-            <el-tag
-              v-for="item in analysisPayload.stocks.slice(0, 6)"
-              :key="item.code"
-              size="small"
-              effect="plain"
-              :type="item.correlationType"
-            >
-              {{ item.name }} {{ item.roleLabel }}
-            </el-tag>
-          </div>
 
           <el-table
             :data="sortedStocks"
@@ -169,7 +113,7 @@
                 <el-tooltip :content="isStockFavorite(row.code) ? '取消收藏' : '加入收藏'" placement="top">
                   <el-icon
                     :class="isStockFavorite(row.code) ? 'fav-icon on' : 'fav-icon'"
-                    @click.stop="toggleStockFav(row.code)" 
+                    @click.stop="toggleStockFav(row.code)"
                   >
                     <StarFilled v-if="isStockFavorite(row.code)" />
                     <Star v-else />
@@ -179,7 +123,7 @@
             </el-table-column>
             <el-table-column prop="price" label="最新" width="90" sortable="custom">
               <template #default="{ row }">
-                {{ row.price?.toFixed?.(2) ?? row.price ?? '--' }}
+                {{ formatNum(row.price, 2) }}
               </template>
             </el-table-column>
 
@@ -198,23 +142,7 @@
             </el-table-column>
 
             <el-table-column prop="turnover" label="换手" width="120" sortable="custom">
-              <template #default="{ row }">{{ Number(row.turnover).toFixed(1) }}%</template>
-            </el-table-column>
-
-            <el-table-column prop="netInflow" label="净流入" width="120" sortable="custom">
-              <template #default="{ row }">
-                <span :class="{ up: row.netInflow > 0, down: row.netInflow < 0 }">
-                  {{ formatMoney(row.netInflow) }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="mainInflow" label="主力" width="120" sortable="custom">
-              <template #default="{ row }">
-                <span :class="{ up: row.mainInflow > 0, down: row.mainInflow < 0 }">
-                  {{ formatMoney(row.mainInflow) }}
-                </span>
-              </template>
+              <template #default="{ row }">{{ formatPct(row.turnover) }}</template>
             </el-table-column>
 
             <el-table-column prop="mktCap" label="市值" width="120" sortable="custom">
@@ -222,11 +150,11 @@
             </el-table-column>
 
             <el-table-column prop="pe" label="PE" width="90" sortable="custom">
-              <template #default="{ row }">{{ row.pe?.toFixed?.(1) ?? row.pe ?? '--' }}</template>
+              <template #default="{ row }">{{ formatNum(row.pe, 1) }}</template>
             </el-table-column>
 
             <el-table-column prop="pb" label="PB" width="90" sortable="custom">
-              <template #default="{ row }">{{ row.pb?.toFixed?.(2) ?? row.pb ?? '--' }}</template>
+              <template #default="{ row }">{{ formatNum(row.pb, 2) }}</template>
             </el-table-column>
 
             <el-table-column label="操作" width="120" align="center" fixed="right">
@@ -236,6 +164,9 @@
             </el-table-column>
           </el-table>
 
+          <div class="table-tip">
+            提示：点击任意一行进入股票详情页，用于后续做个股看板和策略对比。
+          </div>
         </div>
       </div>
     </div>
@@ -243,77 +174,65 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick, defineProps } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useConceptStore } from '@/stores/concept'
-import { useStockStore } from '@/stores/stock'
-import { apiGet } from '@/utils/api'
+import * as echarts from 'echarts'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
 import { buildConceptAnalysisPayload } from '@/utils/conceptAnalysis'
-import * as echarts from 'echarts'
-import { ElMessage } from 'element-plus'
-import { Star, StarFilled } from '@element-plus/icons-vue'
+import { useConceptStore } from '@/stores/concept'
+import { useStockStore } from '@/stores/stock'
+import { useConceptDetailStore } from '@/stores/conceptDetail'
 
 const props = defineProps({
   forcedConceptId: { type: String, default: '' },
-  embedded: { type: Boolean, default: false }
+  embedded: { type: Boolean, default: false },
 })
+
 const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
+const conceptDetailStore = useConceptDetailStore()
 
-/** ✅ 当前概念 id：Drawer 优先，否则路由 */
 const curId = computed(() => String(props.forcedConceptId || route.params.id || ''))
 
-/** ✅ 统一 normalize code：兼容 number / 'sh600519' / '600519.SH' */
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
-  s = s.replace(/\.(SZ|SH)$/i, '')
-  s = s.replace(/^(sz|sh)/i, '')
+  s = s.replace(/\.(SZ|SH|BJ)$/i, '')
+  s = s.replace(/^(sz|sh|bj)/i, '')
   return s
 }
 
-// 添加或移除成分股收藏
-const isStockFavorite = (code) => stockStore.isStockFavorite(code)
-
-const toggleStockFav = (code) => {
-  if (isStockFavorite(code)) {
-    stockStore.removeStockFromMyStocks(code)
-  } else {
-    stockStore.addStockToMyStocks(code)
-  }
-}
-
-/** ✅ 单列表：系统/自定义/自选 都能直接 getConceptById 拿到 */
 const concept = computed(() => conceptStore.getConceptById?.(curId.value) || null)
+const title = computed(() => concept.value?.name || curId.value || '概念')
+const detail = computed(() => conceptDetailStore.detailById[curId.value] || null)
+const capitalFlow = computed(() => conceptDetailStore.capitalFlowById[curId.value] || null)
+const kline = computed(() => conceptDetailStore.klineByKey[`${curId.value}:${klinePeriod.value}`] || null)
 
-const conceptName = computed(() => concept.value?.name || curId.value || '概念')
-const title = computed(() => `${conceptName.value}`)
-
-/** ✅ 成分股：兼容 stockCodes 为 string[] 或 {code}[] */
 const stockCodesNormalized = computed(() => {
   const raw = concept.value?.stockCodes || []
   return (raw || [])
-    .map(x => (typeof x === 'object' ? x?.code : x))
+    .map(item => (typeof item === 'object' ? item?.code : item))
     .map(normalizeCode)
     .filter(Boolean)
 })
 
-/** ✅ 成分股行情：从 stockStore enriched 取；若 base 缺失，做兜底行 */
+const stocksFromApi = computed(() => conceptDetailStore.stocksById[curId.value] || [])
 const stocks = computed(() => {
+  if (stocksFromApi.value.length) return stocksFromApi.value
+
   const codes = stockCodesNormalized.value
   const cname = concept.value?.name || ''
   const list = stockStore.getStocksByCodesEnriched?.(codes, cname) || []
-
-  const exists = new Set(list.map(x => normalizeCode(x.code)))
+  const exists = new Set(list.map(item => normalizeCode(item.code)))
   const extra = codes
-    .filter(c => !exists.has(c))
-    .map(c => ({
-      code: c,
-      name: c,
+    .filter(code => !exists.has(code))
+    .map(code => ({
+      code,
+      name: code,
       price: null,
       change: null,
       amount: null,
@@ -322,31 +241,24 @@ const stocks = computed(() => {
       mainInflow: null,
       mktCap: null,
       pe: null,
-      pb: null
+      pb: null,
     }))
 
   return [...list, ...extra]
 })
 
-/** ✅ 默认按涨跌幅降序 */
 const analysisWindow = ref(30)
 const query = reactive({
   keyword: '',
   correlation: '',
   direction: '',
-  maPattern: ''
+  maPattern: '',
 })
-const maPatternOptions = [
-  { label: '多头排列', value: 'bullish-stack' },
-  { label: '空头排列', value: 'bearish-stack' },
-  { label: '黄金交叉', value: 'golden-cross' },
-  { label: '死亡交叉', value: 'death-cross' },
-  { label: '均线缠绕', value: 'mixed' }
-]
+
 const analysisPayload = computed(() => buildConceptAnalysisPayload(concept.value, stocks.value, { days: analysisWindow.value }))
 const filteredAnalysisStocks = computed(() => {
   const keyword = query.keyword.trim().toLowerCase()
-  return analysisPayload.value.stocks.filter((item) => {
+  return analysisPayload.value.stocks.filter(item => {
     if (keyword) {
       const text = `${item.name || ''} ${item.code || ''}`.toLowerCase()
       if (!text.includes(keyword)) return false
@@ -361,208 +273,264 @@ const filteredAnalysisStocks = computed(() => {
 const sortState = ref({ prop: 'change', order: 'descending' })
 const defaultSort = computed(() => ({ prop: sortState.value.prop, order: sortState.value.order }))
 
-const toNum = (v) => {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY
+function toNum(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : Number.NEGATIVE_INFINITY
 }
 
 const sortedStocks = computed(() => {
   const list = (filteredAnalysisStocks.value || []).slice()
   const { prop, order } = sortState.value
   if (!prop || !order) return list
-  const dir = order === 'ascending' ? 1 : -1
+  const direction = order === 'ascending' ? 1 : -1
   list.sort((a, b) => {
     const av = toNum(a?.[prop])
     const bv = toNum(b?.[prop])
     if (av === bv) return 0
-    return (av > bv ? 1 : -1) * dir
+    return (av > bv ? 1 : -1) * direction
   })
   return list
 })
 
-const onSortChange = ({ prop, order }) => {
+function onSortChange({ prop, order }) {
   sortState.value = { prop, order }
 }
 
-const resetFilters = () => {
-  query.keyword = ''
-  query.correlation = ''
-  query.direction = ''
-  query.maPattern = ''
-}
-
-const goStock = (row) => {
-  const code = normalizeCode(row?.code)
-  if (!code) return
-  router.push(`/stock/${code}`)
-}
-
-/** ✅ 收藏（单列表：favorite 字段） */
 const isFav = computed(() => conceptStore.isConceptFavorite?.(curId.value) ?? false)
-
-const toggleFav = async () => {
-  const c = concept.value
-  if (!c) return
-
-  // 优先走你新 store 的 toggleFavorite
+async function toggleFav() {
+  const current = concept.value
+  if (!current) return
   if (typeof conceptStore.toggleFavorite === 'function') {
     await conceptStore.toggleFavorite(curId.value)
     return
   }
-
-  // 兼容旧接口（你 store 也保留了）
   if (isFav.value) await conceptStore.removeConceptFromMyConcept?.(curId.value)
-  else await conceptStore.addConceptToMyConcept?.(c)
+  else await conceptStore.addConceptToMyConcept?.(current)
 }
 
-/** 格式化 */
-const formatPct = (v) => {
-  const n = Number(v)
-  if (Number.isNaN(n)) return '--'
-  return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
+const isStockFavorite = code => stockStore.isStockFavorite(code)
+const toggleStockFav = code => {
+  if (isStockFavorite(code)) stockStore.removeStockFromMyStocks(code)
+  else stockStore.addStockToMyStocks(code)
 }
-const formatMoney = (v) => {
-  const n = Number(v)
-  if (Number.isNaN(n)) return '--'
-  const abs = Math.abs(n)
-  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
+
+function goStock(row) {
+  const code = normalizeCode(row?.code)
+  if (!code) return
+  router.push({
+    path: `/stock/${code}`,
+    query: concept.value?.name ? { sector: concept.value.name } : {},
+  })
+}
+
+function formatNum(value, digits = 2) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  return num.toFixed(digits)
+}
+
+function formatPct(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`
+}
+
+function formatMoney(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  const abs = Math.abs(num)
+  const sign = num > 0 ? '+' : num < 0 ? '-' : ''
   if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`
   if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
   return `${sign}${abs.toFixed(0)}`
 }
 
-/** 概览统计 */
-const stocksCount = computed(() => stocks.value.length)
-const upCount = computed(() => stocks.value.filter(s => Number(s.change) > 0).length)
-const downCount = computed(() => stocks.value.filter(s => Number(s.change) < 0).length)
+const stocksCount = computed(() => {
+  if (stocks.value.length) return stocks.value.length
+  return detail.value?.stockCount ?? 0
+})
+const upCount = computed(() => {
+  if (stocks.value.length) return stocks.value.filter(item => Number(item.change) > 0).length
+  return detail.value?.upCount ?? 0
+})
+const downCount = computed(() => {
+  if (stocks.value.length) return stocks.value.filter(item => Number(item.change) < 0).length
+  return detail.value?.downCount ?? 0
+})
 const avgChg = computed(() => {
-  const list = stocks.value.map(s => Number(s.change)).filter(n => !Number.isNaN(n))
+  const list = (stocks.value || []).map(item => Number(item.change)).filter(Number.isFinite)
   if (!list.length) return 0
-  return list.reduce((a, b) => a + b, 0) / list.length
+  return list.reduce((sum, item) => sum + item, 0) / list.length
 })
 const leaderStock = computed(() => {
-  const list = stocks.value.slice().filter(s => !Number.isNaN(Number(s.change)))
-  if (!list.length) return null
-  return list.sort((a, b) => Number(b.change) - Number(a.change))[0]
+  const list = (stocks.value || []).filter(item => Number.isFinite(Number(item.change)))
+  if (!list.length) return detail.value?.leaderStock || null
+  return [...list].sort((a, b) => Number(b.change) - Number(a.change))[0]
 })
 
+const board = computed(() => ({
+  open: detail.value?.open ?? concept.value?.open,
+  close: detail.value?.close ?? concept.value?.close,
+  high: detail.value?.high ?? concept.value?.high,
+  low: detail.value?.low ?? concept.value?.low,
+  preClose: detail.value?.preClose ?? concept.value?.preClose,
+  change: detail.value?.change ?? concept.value?.changeAmount,
+  changeRate: detail.value?.changeRate ?? concept.value?.change,
+  volume: detail.value?.volume ?? concept.value?.volume,
+  amount: detail.value?.amount ?? concept.value?.amount,
+}))
 
-/** ===== 概念详情指标与图表 ===== */
-const klinePeriod = ref('1m')
-const board = ref({
-  open: 2680, close: 2700, high: 2715, low: 2668, preClose: 2688,
-  change: +12, changeRate: +0.45, volume: 320, amount: 580
-})
 const detailList = computed(() => ([
-  { label: '开盘价', value: board.value.open, style: 'neutral' },
-  { label: '收盘价', value: board.value.close, style: 'primary' },
-  { label: '最高价', value: board.value.high, style: 'neutral' },
-  { label: '最低价', value: board.value.low, style: 'neutral' },
-  { label: '昨收价', value: board.value.preClose, style: 'neutral' },
-  { label: '涨跌额', value: board.value.change > 0 ? `+${board.value.change}` : board.value.change, style: board.value.change >= 0 ? 'danger' : 'success' },
-  { label: '涨跌幅', value: board.value.changeRate > 0 ? `+${board.value.changeRate}%` : `${board.value.changeRate}%`, style: board.value.changeRate >= 0 ? 'danger' : 'success' },
-  { label: '成交量(万)', value: board.value.volume, style: 'neutral' },
-  { label: '成交额(亿)', value: board.value.amount, style: 'neutral' }
+  { label: '开盘价', value: formatNum(board.value.open, 2), style: 'neutral' },
+  { label: '收盘价', value: formatNum(board.value.close, 2), style: 'primary' },
+  { label: '最高价', value: formatNum(board.value.high, 2), style: 'neutral' },
+  { label: '最低价', value: formatNum(board.value.low, 2), style: 'neutral' },
+  { label: '昨收价', value: formatNum(board.value.preClose, 2), style: 'neutral' },
+  {
+    label: '涨跌额',
+    value: Number.isFinite(Number(board.value.change))
+      ? `${Number(board.value.change) > 0 ? '+' : ''}${Number(board.value.change).toFixed(2)}`
+      : '--',
+    style: Number(board.value.change) >= 0 ? 'danger' : 'success',
+  },
+  {
+    label: '涨跌幅',
+    value: formatPct(board.value.changeRate),
+    style: Number(board.value.changeRate) >= 0 ? 'danger' : 'success',
+  },
+  {
+    label: '成交量',
+    value: formatMoney(board.value.volume),
+    style: 'neutral',
+  },
+  {
+    label: '成交额',
+    value: formatMoney(board.value.amount),
+    style: 'neutral',
+  },
 ]))
 
-const fundTimes = ['09:30', '10:00', '10:30', '11:00', '13:00', '14:00', '14:30']
-const fundIn = [300, 420, 380, 460, 500, 480, 520]
-const fundOut = [280, 390, 360, 430, 460, 450, 470]
-const fundNet = fundIn.map((v, i) => v - fundOut[i])
-
+const klinePeriod = ref('1m')
 const fundChartRef = ref(null)
 const klineChartRef = ref(null)
 let fundChart = null
 let klineChart = null
 
-const initFundChart = () => {
+function initFundChart() {
   if (!fundChartRef.value) return
   fundChart?.dispose()
   fundChart = echarts.init(fundChartRef.value)
+
+  const times = capitalFlow.value?.times || []
+  const inflow = capitalFlow.value?.inflow || []
+  const outflow = capitalFlow.value?.outflow || []
+  const netInflow = capitalFlow.value?.netInflow || []
+
   fundChart.setOption({
     tooltip: { trigger: 'axis' },
     legend: { bottom: 0, left: 'center', data: ['流入', '流出', '净流入'] },
     grid: { left: 40, right: 20, top: 20, bottom: 50 },
-    xAxis: { type: 'category', data: fundTimes },
+    xAxis: { type: 'category', data: times },
     yAxis: { type: 'value' },
     series: [
-      { name: '流入', type: 'line', smooth: true, data: fundIn },
-      { name: '流出', type: 'line', smooth: true, data: fundOut },
-      { name: '净流入', type: 'bar', data: fundNet }
-    ]
+      { name: '流入', type: 'line', smooth: true, data: inflow },
+      { name: '流出', type: 'line', smooth: true, data: outflow },
+      { name: '净流入', type: 'bar', data: netInflow },
+    ],
   })
 }
 
-const initKlineChart = () => {
+function initKlineChart() {
   if (!klineChartRef.value) return
   klineChart?.dispose()
   klineChart = echarts.init(klineChartRef.value)
+
   klineChart.setOption({
     tooltip: { trigger: 'axis' },
-    grid: { left: 50, right: 20, top: 20, bottom: 30 },
-    xAxis: { type: 'category', data: fundTimes },
-    yAxis: { scale: true },
-    series: [{
-      type: 'candlestick',
-      data: [
-        [2680, 2700, 2710, 2675],
-        [2700, 2690, 2715, 2685],
-        [2690, 2705, 2720, 2688],
-        [2705, 2710, 2725, 2700],
-        [2710, 2700, 2720, 2695],
-        [2700, 2718, 2730, 2698],
-        [2718, 2725, 2740, 2710]
-      ]
-    }]
+    grid: [
+      { left: 50, right: 20, top: 20, height: '62%' },
+      { left: 50, right: 20, top: '76%', height: '16%' },
+    ],
+    xAxis: [
+      { type: 'category', data: kline.value?.times || [] },
+      { type: 'category', gridIndex: 1, data: kline.value?.times || [], axisLabel: { show: false } },
+    ],
+    yAxis: [
+      { scale: true },
+      { gridIndex: 1, splitNumber: 2 },
+    ],
+    series: [
+      {
+        type: 'candlestick',
+        data: kline.value?.data || [],
+      },
+      {
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: kline.value?.volumes || [],
+      },
+    ],
   })
 }
 
-const refresh = async () => {
+function resizeCharts() {
+  fundChart?.resize()
+  klineChart?.resize()
+}
+
+async function loadPageData() {
+  if (!curId.value) return
   await nextTick()
+  await conceptDetailStore.fetchAllForMarketView(curId.value, klinePeriod.value)
   initFundChart()
   initKlineChart()
+  resizeCharts()
 }
 
-/**
- * ✅ 重要修正：curId/成分股变化时先 stop 再 start，避免重复计时器叠加
- * 成分股变化时先停止旧轮询，再启动新的真实行情轮询。
- */
-const startTickerForCurrent = () => {
-  const codes = stockCodesNormalized.value
-  stockStore.stopQuotePolling?.()
-  stockStore.startQuotePolling?.(codes, 3000)
-}
-
-onMounted(() => {
-  startTickerForCurrent()
-  refresh()
+onMounted(async () => {
+  if (!conceptStore.loaded || !conceptStore.conceptList?.length) {
+    await conceptStore.ensureLoaded()
+  }
+  await loadPageData()
+  window.addEventListener('resize', resizeCharts)
 })
 
-watch(
-  [() => curId.value, () => stockCodesNormalized.value.join(',')],
-  () => {
-    startTickerForCurrent()
-    refresh()
-  }
-)
+watch(() => curId.value, async () => {
+  await loadPageData()
+})
 
-watch(klinePeriod, initKlineChart)
+watch(klinePeriod, async value => {
+  if (!curId.value) return
+  await conceptDetailStore.fetchKline(curId.value, value)
+  initKlineChart()
+})
+
+watch(capitalFlow, () => {
+  initFundChart()
+})
+
+watch(kline, () => {
+  initKlineChart()
+})
 
 onBeforeUnmount(() => {
-  stockStore.stopQuotePolling?.()
+  window.removeEventListener('resize', resizeCharts)
   fundChart?.dispose()
   klineChart?.dispose()
 })
 </script>
 
 <style scoped>
-/* 外层 */
 .market-shell{
   width:100%;
 }
 
-/* 主内容 */
-.market-page{ width:100%; min-width:0; }
+.market-page{
+  width:100%;
+  min-width:0;
+}
+
 .market-view{
   width:100%;
   min-width:0;
@@ -572,82 +540,236 @@ onBeforeUnmount(() => {
   box-sizing:border-box;
 }
 
-/* Header */
-.market-header{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
-.title-wrap{ display:flex; flex-direction:column; gap:8px; }
-.market-title{ display:inline-flex; align-items:center; gap:10px; font-size:24px; font-weight:800; color:#111827; }
-.fav-btn{ padding:0 !important; }
-.fav-icon{ font-size:18px; color:#c0c4cc; transition:transform .15s ease, color .15s ease; }
-.fav-icon.on{ color:#f59e0b; }
-.fav-btn:hover .fav-icon{ transform:translateY(-1px); color:#f59e0b; }
+.market-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  margin-bottom:18px;
+}
 
-/* 概览条 */
+.title-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.market-title{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-size:24px;
+  font-weight:800;
+  color:#111827;
+}
+
+.fav-btn{
+  padding:0 !important;
+}
+
+.fav-icon{
+  font-size:18px;
+  color:#c0c4cc;
+  transition:transform .15s ease, color .15s ease;
+  cursor:pointer;
+}
+
+.fav-icon.on{
+  color:#f59e0b;
+}
+
+.fav-btn:hover .fav-icon,
+.fav-icon:hover{
+  transform:translateY(-1px);
+  color:#f59e0b;
+}
+
 .overview-bar{
   display:flex;
   flex-wrap:wrap;
   gap:10px 14px;
   padding:10px 12px;
-  background: rgba(255,255,255,.9);
+  background:rgba(255,255,255,.9);
   border:1px solid rgba(0,0,0,.06);
   border-radius:12px;
 }
-.ov-item{ display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#606266; }
-.ov-k{ color:#909399; }
-.ov-v{ font-weight:800; color:#303133; }
-.ov-v.up{ color:#f56c6c; }
-.ov-v.down{ color:#67c23a; }
-.arrow{ font-weight:900; margin-right:2px; }
-.ov-leader{ flex:1 1 auto; min-width:240px; }
-.leader{ display:inline-flex; align-items:center; gap:8px; }
-.leader-chg{ font-weight:900; }
 
-/* 9宫格 */
-.metric-grid{ display:grid; grid-template-columns: repeat(9, 1fr); gap:18px; margin-bottom:28px; }
-.metric-card{ padding:18px; border-radius:14px; text-align:center; }
-.metric-label{ font-size:12px; opacity:.85; }
-.metric-value{ margin-top:8px; font-size:22px; font-weight:700; }
-.metric-card.primary{ background: linear-gradient(135deg, #6c7ae0, #7f60c5); color:#fff; }
-.metric-card.danger{ background: linear-gradient(135deg, #ff7a7a, #ff4d79); color:#fff; }
-.metric-card.success{ background: linear-gradient(135deg, #67c23a, #3fa36c); color:#fff; }
-.metric-card.neutral{ background:#e9edf3; }
-
-/* 图表 */
-.panel-row{ display:grid; grid-template-columns: 1.2fr 2.8fr; gap:20px; }
-.panel-card{ background:#fff; border-radius:14px; padding:20px; box-shadow:0 6px 18px rgba(0,0,0,.06); }
-.panel-title{ font-size:15px; font-weight:800; margin-bottom:14px; color:#303133; }
-.panel-header{ display:flex; justify-content:space-between; align-items:center; }
-.chart-fund{ height:240px; }
-.chart-kline{ height:360px; }
-.table-panel{ margin-top:24px; }
-
-/* 表格 */
-.stock-table :deep(.el-table__row){ cursor:pointer; }
-.stock-table :deep(.el-table__row:hover td){ background:#f5f8ff !important; }
-.chg{ display:inline-flex; align-items:center; gap:6px; font-weight:900; }
-.chg .arrow{ font-size:14px; line-height:1; }
-.up{ color:#f56c6c; }
-.down{ color:#67c23a; }
-/* 添加收藏按钮的样式 */
-.fav-icon {
-  font-size: 18px;
-  cursor: pointer;
-  transition: color 0.2s ease, transform 0.2s ease;
+.ov-item{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:#606266;
 }
 
-.fav-icon.on {
-  color: #f59e0b;
+.ov-k{
+  color:#909399;
 }
 
-.fav-icon:hover {
-  transform: translateY(-2px);
+.ov-v{
+  font-weight:800;
+  color:#303133;
 }
 
-.table-panel .el-table-column {
-  max-width: 120px;
+.ov-v.up{
+  color:#f56c6c;
 }
-/* 响应式 */
+
+.ov-v.down{
+  color:#67c23a;
+}
+
+.arrow{
+  font-weight:900;
+  margin-right:2px;
+}
+
+.ov-leader{
+  flex:1 1 auto;
+  min-width:240px;
+}
+
+.leader{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+
+.leader-chg{
+  font-weight:900;
+}
+
+.metric-grid{
+  display:grid;
+  grid-template-columns:repeat(9, 1fr);
+  gap:18px;
+  margin-bottom:28px;
+}
+
+.metric-card{
+  padding:18px;
+  border-radius:14px;
+  text-align:center;
+}
+
+.metric-label{
+  font-size:12px;
+  opacity:.85;
+}
+
+.metric-value{
+  margin-top:8px;
+  font-size:22px;
+  font-weight:700;
+}
+
+.metric-card.primary{
+  background:linear-gradient(135deg, #6c7ae0, #7f60c5);
+  color:#fff;
+}
+
+.metric-card.danger{
+  background:linear-gradient(135deg, #ff7a7a, #ff4d79);
+  color:#fff;
+}
+
+.metric-card.success{
+  background:linear-gradient(135deg, #67c23a, #3fa36c);
+  color:#fff;
+}
+
+.metric-card.neutral{
+  background:#e9edf3;
+}
+
+.panel-row{
+  display:grid;
+  grid-template-columns:1.2fr 2.8fr;
+  gap:20px;
+}
+
+.panel-card{
+  background:#fff;
+  border-radius:14px;
+  padding:20px;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);
+}
+
+.panel-title{
+  font-size:15px;
+  font-weight:800;
+  margin-bottom:14px;
+  color:#303133;
+}
+
+.panel-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.chart-fund{
+  height:240px;
+}
+
+.chart-kline{
+  height:360px;
+}
+
+.chart-note{
+  margin-top:10px;
+  font-size:12px;
+  color:#909399;
+}
+
+.table-panel{
+  margin-top:24px;
+}
+
+.stock-table :deep(.el-table__row){
+  cursor:pointer;
+}
+
+.stock-table :deep(.el-table__row:hover td){
+  background:#f5f8ff !important;
+}
+
+.chg{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-weight:900;
+}
+
+.chg .arrow{
+  font-size:14px;
+  line-height:1;
+}
+
+.up{
+  color:#f56c6c;
+}
+
+.down{
+  color:#67c23a;
+}
+
+.table-panel .el-table-column{
+  max-width:120px;
+}
+
+.table-tip{
+  margin-top:10px;
+  font-size:12px;
+  color:#909399;
+}
+
 @media (max-width: 1100px){
-  .metric-grid{ grid-template-columns: repeat(3, 1fr); }
-  .panel-row{ grid-template-columns: 1fr; }
+  .metric-grid{
+    grid-template-columns:repeat(3, 1fr);
+  }
+
+  .panel-row{
+    grid-template-columns:1fr;
+  }
 }
 </style>

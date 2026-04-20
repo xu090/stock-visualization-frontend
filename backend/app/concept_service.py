@@ -48,6 +48,174 @@ def _normalize_stock_codes(codes: list[str] | None) -> list[str]:
     return normalized
 
 
+def _concept_sector_name(concept_id: str, concept_name: str | None = None) -> str:
+    mapping = {
+        "semiconductor": "半导体",
+        "intelligent_driving": "智能驾驶",
+        "robot": "人形机器人",
+        "military": "国防军工",
+    }
+    return mapping.get(str(concept_id or "").strip(), str(concept_name or "").strip())
+
+
+def _fetch_sector_snapshot_map() -> dict[str, dict]:
+    sql = """
+        SELECT DISTINCT ON (sector_name)
+            sector_name,
+            open,
+            close,
+            high,
+            low,
+            ycp,
+            vol,
+            amount,
+            stock_count,
+            change,
+            change_pct,
+            timestamps
+        FROM sector_index
+        ORDER BY sector_name, timestamps DESC
+    """
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('public.sector_index') AS regclass")
+                exists_row = cur.fetchone()
+                if not exists_row or not exists_row["regclass"]:
+                    return {}
+                cur.execute(sql)
+                rows = cur.fetchall()
+    except Exception:
+        return {}
+
+    result: dict[str, dict] = {}
+    for row in rows:
+        name = str(row.get("sector_name") or "").strip()
+        if not name:
+            continue
+        result[name] = row
+    return result
+
+
+def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[dict]:
+    sql = """
+        WITH latest_stock AS (
+            SELECT DISTINCT ON (stock_code)
+                stock_code,
+                ts,
+                close,
+                previous_close,
+                amount,
+                tor,
+                udp,
+                udf,
+                udz
+            FROM stock_time_sharing
+            ORDER BY stock_code, ts DESC
+        )
+        SELECT
+            c.id,
+            c.name,
+            c.description,
+            c.algorithm,
+            c.editable,
+            c.favorite,
+            c.source,
+            ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
+                FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
+            COUNT(cs.stock_code) AS stock_count,
+            COUNT(ls.stock_code) AS active_stock_count,
+            AVG(ls.udf) AS change,
+            AVG(ls.udp) AS change_amount,
+            COALESCE(SUM(ls.amount), 0) AS amount,
+            AVG(ls.tor) AS turnover,
+            AVG(ls.udz) AS volatility,
+            SUM(CASE WHEN ls.udf > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ls.stock_code), 0) AS up_ratio,
+            SUM(CASE WHEN ls.udf >= 9.8 THEN 1 ELSE 0 END) AS limit_up,
+            SUM(CASE WHEN ls.udf <= -9.8 THEN 1 ELSE 0 END) AS limit_down,
+            MAX(ls.ts) AS latest_ts
+        FROM concepts c
+        LEFT JOIN concept_stocks cs ON cs.concept_id = c.id
+        LEFT JOIN latest_stock ls ON ls.stock_code = cs.stock_code
+        WHERE (%s IS NULL OR c.id = ANY(%s))
+        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite, c.source
+        ORDER BY c.favorite DESC, c.editable ASC, c.name ASC
+    """
+    ids = concept_ids if concept_ids else None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (ids, ids))
+            return cur.fetchall()
+
+
+def _build_concept_realtime_snapshot(row: dict, sector_snapshot_map: dict[str, dict] | None = None) -> dict:
+    sector_snapshot_map = sector_snapshot_map or {}
+    change = _safe_num(row.get("change"), 0.0)
+    up_ratio = _safe_num(row.get("up_ratio"), 0.0)
+    turnover = _safe_num(row.get("turnover"), 0.0)
+    amount = _safe_num(row.get("amount"), 0.0)
+    change_amount = _safe_num(row.get("change_amount"), 0.0)
+
+    sector_name = _concept_sector_name(row.get("id"), row.get("name"))
+    sector_snapshot = sector_snapshot_map.get(sector_name)
+    open_price = close_price = high_price = low_price = pre_close = volume = latest_ts = None
+    stock_count = row.get("stock_count")
+
+    if sector_snapshot:
+        change = _safe_num(sector_snapshot.get("change_pct"), change)
+        change_amount = _safe_num(sector_snapshot.get("change"), change_amount)
+        open_price = round(_safe_num(sector_snapshot.get("open"), 0.0), 2)
+        close_price = round(_safe_num(sector_snapshot.get("close"), 0.0), 2)
+        high_price = round(_safe_num(sector_snapshot.get("high"), 0.0), 2)
+        low_price = round(_safe_num(sector_snapshot.get("low"), 0.0), 2)
+        pre_close = round(_safe_num(sector_snapshot.get("ycp"), 0.0), 2)
+        volume = _safe_num(sector_snapshot.get("vol"), 0.0)
+        amount = _safe_num(sector_snapshot.get("amount"), amount)
+        stock_count = sector_snapshot.get("stock_count") or stock_count
+        latest_ts = int(sector_snapshot["timestamps"].timestamp() * 1000) if sector_snapshot.get("timestamps") else None
+    else:
+        latest_ts = int(row["latest_ts"].timestamp() * 1000) if row.get("latest_ts") else None
+
+    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row.get("description"),
+        "algorithm": row.get("algorithm"),
+        "editable": row.get("editable"),
+        "favorite": row.get("favorite"),
+        "source": row.get("source"),
+        "stockCodes": row.get("stock_codes") or [],
+        "stockCount": int(stock_count or 0),
+        "activeStockCount": row.get("active_stock_count") or 0,
+        "change": round(change, 2),
+        "changeAmount": round(change_amount, 2),
+        "amount": amount,
+        "turnover": round(turnover, 2),
+        "upRatio": round(up_ratio, 2),
+        "limitUp": row.get("limit_up"),
+        "limitDown": row.get("limit_down"),
+        "strength": strength,
+        "spike5m": round(abs(change) * 8 + up_ratio * 30, 2),
+        "volatility": round(_safe_num(row.get("volatility"), 0.0), 2),
+        "latestTs": latest_ts,
+        "open": open_price,
+        "close": close_price,
+        "high": high_price,
+        "low": low_price,
+        "preClose": pre_close,
+        "volume": volume,
+    }
+
+
+def fetch_concept_realtime_snapshot(concept_id: str) -> dict | None:
+    rows = _fetch_concept_aggregate_rows([str(concept_id or "").strip()])
+    if not rows:
+        return None
+    sector_snapshot_map = _fetch_sector_snapshot_map()
+    return _build_concept_realtime_snapshot(rows[0], sector_snapshot_map)
+
+
 def _map_concept_row(row: dict, stock_codes: list[str] | None = None) -> dict:
     result = {
         "id": row["id"],
@@ -106,82 +274,9 @@ def _fetch_concept_stock_codes(cur, concept_id: str) -> list[str]:
 
 
 def fetch_concept_overview() -> list[dict]:
-    # 先取每只股票最新一分钟数据，再按 concept 聚合成概念总览。
-    sql = """
-        WITH latest_stock AS (
-            SELECT DISTINCT ON (stock_code)
-                stock_code,
-                ts,
-                close,
-                previous_close,
-                amount,
-                tor,
-                udf,
-                udz
-            FROM stock_time_sharing
-            ORDER BY stock_code, ts DESC
-        )
-        SELECT
-            c.id,
-            c.name,
-            c.description,
-            c.algorithm,
-            c.editable,
-            c.favorite,
-            ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
-                FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
-            COUNT(cs.stock_code) AS stock_count,
-            COUNT(ls.stock_code) AS active_stock_count,
-            AVG(ls.udf) AS change,
-            COALESCE(SUM(ls.amount), 0) AS amount,
-            AVG(ls.tor) AS turnover,
-            AVG(ls.udz) AS volatility,
-            SUM(CASE WHEN ls.udf > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(ls.stock_code), 0) AS up_ratio,
-            SUM(CASE WHEN ls.udf >= 9.8 THEN 1 ELSE 0 END) AS limit_up,
-            SUM(CASE WHEN ls.udf <= -9.8 THEN 1 ELSE 0 END) AS limit_down,
-            MAX(ls.ts) AS latest_ts
-        FROM concepts c
-        LEFT JOIN concept_stocks cs ON cs.concept_id = c.id
-        LEFT JOIN latest_stock ls ON ls.stock_code = cs.stock_code
-        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite
-        ORDER BY c.favorite DESC, c.editable ASC, c.name ASC
-    """
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            rows = cur.fetchall()
-
-    result = []
-    for row in rows:
-        change = _safe_num(row["change"], 0.0)
-        up_ratio = _safe_num(row["up_ratio"], 0.0)
-        turnover = _safe_num(row["turnover"], 0.0)
-        amount = _safe_num(row["amount"], 0.0)
-        strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
-        result.append(
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "description": row["description"],
-                "algorithm": row["algorithm"],
-                "editable": row["editable"],
-                "favorite": row["favorite"],
-                "stockCodes": row["stock_codes"] or [],
-                "stockCount": row["stock_count"],
-                "activeStockCount": row["active_stock_count"],
-                "change": round(change, 2),
-                "amount": amount,
-                "turnover": round(turnover, 2),
-                "upRatio": round(up_ratio, 2),
-                "limitUp": row["limit_up"],
-                "limitDown": row["limit_down"],
-                "strength": strength,
-                "spike5m": round(abs(change) * 8 + up_ratio * 30, 2),
-                "volatility": round(_safe_num(row["volatility"], 0.0), 2),
-                "latestTs": int(row["latest_ts"].timestamp() * 1000) if row["latest_ts"] else None,
-            }
-        )
-    return result
+    rows = _fetch_concept_aggregate_rows()
+    sector_snapshot_map = _fetch_sector_snapshot_map()
+    return [_build_concept_realtime_snapshot(row, sector_snapshot_map) for row in rows]
 
 
 def fetch_concept_detail(concept_id: str) -> dict | None:
@@ -503,6 +598,9 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
     if concept is None:
         return None
 
+    sector_snapshot_map = _fetch_sector_snapshot_map()
+    sector_snapshot = sector_snapshot_map.get(_concept_sector_name(concept_id, concept.get("name")))
+
     sql = """
         WITH concept_minutes AS (
             SELECT
@@ -599,6 +697,10 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
     first_close = _safe_num(row["first_close"], latest_close)
     max_close = _safe_num(row["max_close"], latest_close)
     change = _safe_num(row["change"], 0.0)
+    change_amount = round(latest_close - prev_close, 2)
+    if sector_snapshot:
+        change = _safe_num(sector_snapshot.get("change_pct"), change)
+        change_amount = round(_safe_num(sector_snapshot.get("change"), change_amount), 2)
     turnover = _safe_num(row["turnover"], 0.0)
     up_ratio = _safe_num(row["up_ratio"], 0.0)
     strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
@@ -611,6 +713,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
     return {
         **concept,
         "change": round(change, 2),
+        "changeAmount": change_amount,
         "change1m": pct_from(prev_close),
         "change5m": pct_from(five_close),
         "change20d": pct_from(first_close),

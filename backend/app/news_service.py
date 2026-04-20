@@ -106,11 +106,13 @@ def fetch_news_list(limit: int = 50, stock_code: str | None = None, keyword: str
     params: list[object] = []
 
     if stock_code:
-        clauses.append("stocks LIKE %s")
+        clauses.append("COALESCE(stocks::text, '') LIKE %s")
         params.append(f"%{stock_code}%")
 
     if keyword:
-        clauses.append("(title ILIKE %s OR brief ILIKE %s OR content ILIKE %s)")
+        clauses.append(
+            "(COALESCE(title::text, '') ILIKE %s OR COALESCE(brief::text, '') ILIKE %s OR COALESCE(content::text, '') ILIKE %s)"
+        )
         keyword_param = f"%{keyword}%"
         params.extend([keyword_param, keyword_param, keyword_param])
 
@@ -170,7 +172,7 @@ def fetch_concept_news(concept_id: str, limit: int = 20) -> list[dict]:
             SELECT 1
             FROM concept_stocks cs
             WHERE cs.concept_id = %s
-              AND ne.stocks LIKE '%%' || cs.stock_code || '%%'
+              AND COALESCE(ne.stocks::text, '') LIKE '%%' || cs.stock_code || '%%'
         )
         ORDER BY ne.publish_time DESC NULLS LAST, ne.created_at DESC
         LIMIT %s

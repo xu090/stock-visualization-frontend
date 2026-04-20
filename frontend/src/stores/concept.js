@@ -10,6 +10,8 @@ function normalizeConcept(item = {}) {
   const stockCodes = Array.isArray(item.stockCodes)
     ? item.stockCodes.map(code => String(code).trim()).filter(Boolean)
     : []
+  const change = item.changeRate ?? item.change
+  const changeAmount = item.changeAmount ?? item.changeValue ?? item.change_amount
   return {
     id: normId(item.id),
     name: item.name || item.id || '',
@@ -19,7 +21,8 @@ function normalizeConcept(item = {}) {
     editable: !!item.editable,
     favorite: !!item.favorite,
     source: item.source || '',
-    change: Number(item.change || 0),
+    change: Number(change || 0),
+    changeAmount: changeAmount == null ? null : Number(changeAmount),
     change1m: Number(item.change1m || 0),
     change5m: Number(item.change5m || item.spike5m || 0),
     change20d: Number(item.change20d || 0),
@@ -37,10 +40,17 @@ function normalizeConcept(item = {}) {
     volatility: Number(item.volatility || 0),
     stockCount: Number(item.stockCount || stockCodes.length || 0),
     activeStockCount: Number(item.activeStockCount || 0),
+    open: item.open == null ? null : Number(item.open),
+    close: item.close == null ? null : Number(item.close),
+    high: item.high == null ? null : Number(item.high),
+    low: item.low == null ? null : Number(item.low),
+    preClose: item.preClose == null ? null : Number(item.preClose),
+    volume: item.volume == null ? null : Number(item.volume),
     latestTs: item.latestTs || null,
     curve: Array.isArray(item.curve) ? item.curve : [],
 
-    rtChange: Number(item.change || 0),
+    rtChange: Number(change || 0),
+    rtChangeAmount: changeAmount == null ? null : Number(changeAmount),
     rtChange1m: Number(item.change1m || 0),
     rtChange5m: Number(item.change5m || item.spike5m || 0),
     rtChange20d: Number(item.change20d || 0),
@@ -55,7 +65,13 @@ function normalizeConcept(item = {}) {
     rtStrength: Number(item.strength || 0),
     rtSpike5m: Number(item.spike5m || 0),
     rtVolatility: Number(item.volatility || 0),
-    rtDrawdown20d: Number(item.drawdown20d || 0)
+    rtDrawdown20d: Number(item.drawdown20d || 0),
+    rtOpen: item.open == null ? null : Number(item.open),
+    rtClose: item.close == null ? null : Number(item.close),
+    rtHigh: item.high == null ? null : Number(item.high),
+    rtLow: item.low == null ? null : Number(item.low),
+    rtPreClose: item.preClose == null ? null : Number(item.preClose),
+    rtVolume: item.volume == null ? null : Number(item.volume),
   }
 }
 
@@ -126,8 +142,15 @@ export const useConceptStore = defineStore('concept', {
       const next = normalizeConcept(item)
       if (!next.id) return null
       const idx = this.conceptList.findIndex(c => normId(c.id) === next.id)
-      if (idx >= 0) this.conceptList[idx] = { ...this.conceptList[idx], ...next }
-      else this.conceptList.push(next)
+      if (idx >= 0) {
+        const current = this.conceptList[idx]
+        const merged = { ...current, ...next }
+        if (next.changeAmount == null) merged.changeAmount = current?.changeAmount ?? null
+        if (next.rtChangeAmount == null) merged.rtChangeAmount = current?.rtChangeAmount ?? null
+        this.conceptList[idx] = merged
+      } else {
+        this.conceptList.push(next)
+      }
 
       // 持久化到 localStorage
       try {
@@ -164,8 +187,8 @@ export const useConceptStore = defineStore('concept', {
       }
     },
 
-    async ensureLoaded() {
-      if (this.loaded && this.conceptList.length) return this.conceptList
+    async ensureLoaded(force = false) {
+      if (!force && this.loaded && this.conceptList.length) return this.conceptList
       return this.fetchConceptOverview()
     },
 
@@ -175,14 +198,34 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async fetchConceptMacro(id) {
-      const row = await apiGet(`/api/concepts/${encodeURIComponent(id)}/macro`)
-      return this.upsertConcept(row)
+      return apiGet(`/api/concepts/${encodeURIComponent(id)}/macro`)
     },
 
     async refreshConceptMacros(ids = []) {
       const targets = ids.length ? ids : this.conceptList.map(c => c.id)
-      await Promise.allSettled(targets.map(id => this.fetchConceptMacro(id)))
-      return this.conceptList
+      return Promise.allSettled(targets.map(id => this.fetchConceptMacro(id)))
+    },
+
+    syncMarketDetail(detail) {
+      const sid = normId(detail?.id)
+      if (!sid) return null
+      const current = this.getConceptById(sid) || { id: sid }
+      return this.upsertConcept({
+        ...current,
+        id: sid,
+        name: detail?.name ?? current.name,
+        stockCount: detail?.stockCount ?? current.stockCount,
+        amount: detail?.amount ?? current.amount,
+        volume: detail?.volume ?? current.volume,
+        open: detail?.open ?? current.open,
+        close: detail?.close ?? current.close,
+        high: detail?.high ?? current.high,
+        low: detail?.low ?? current.low,
+        preClose: detail?.preClose ?? current.preClose,
+        latestTs: detail?.latestTs ?? current.latestTs,
+        change: detail?.changeRate ?? current.change,
+        changeAmount: detail?.change ?? current.changeAmount,
+      })
     },
 
     async addConceptToMyConcept(conceptOrId) {

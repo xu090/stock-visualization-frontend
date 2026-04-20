@@ -265,20 +265,15 @@
               </div>
 
               <div class="metric-row">
-                <span class="k">净流入</span>
-                <span class="v strong" :class="{ up: item.netInflow > 0, down: item.netInflow < 0 }">
-                  {{ fmtMoneyY(item.netInflow) }}
+                <span class="k">涨跌额</span>
+                <span class="v strong" :class="chgClass(item.changeAmount)">
+                  {{ fmtPriceSigned(item.changeAmount) }}
                 </span>
               </div>
 
               <div class="metric-row">
                 <span class="k">成交额</span>
                 <span class="v strong">{{ fmtMoneyY(item.amount) }}</span>
-              </div>
-
-              <div class="metric-row">
-                <span class="k">量比</span>
-                <span class="v strong">{{ fmtNum(item.volRatio, 2) }}</span>
               </div>
 
               <div class="metric-row">
@@ -318,29 +313,11 @@
           </div>
 
           <div class="f-item">
-            <div class="f-label">净流入（亿）</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minNetInflowY" :min="-50" :max="50" :step="0.1" controls-position="right" placeholder="≥" />
-              <span class="to">~</span>
-              <el-input-number v-model="homeFilter.filters.maxNetInflowY" :min="-50" :max="50" :step="0.1" controls-position="right" placeholder="≤" />
-            </div>
-          </div>
-
-          <div class="f-item">
             <div class="f-label">成交额（亿）</div>
             <div class="f-ctrl">
               <el-input-number v-model="homeFilter.filters.minAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≥" />
               <span class="to">~</span>
               <el-input-number v-model="homeFilter.filters.maxAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≤" />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">量比</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minVolRatio" :min="0" :max="5" :step="0.1" controls-position="right" placeholder="≥" />
-              <span class="to">~</span>
-              <el-input-number v-model="homeFilter.filters.maxVolRatio" :min="0" :max="5" :step="0.1" controls-position="right" placeholder="≤" />
             </div>
           </div>
 
@@ -486,14 +463,13 @@ function conceptNameById(id) {
 /** 指标定义 */
 const metricDefs = [
   { key: 'change', label: '涨跌幅', tip: '概念当前涨跌幅' },
-  { key: 'netInflow', label: '净流入', tip: '概念资金净流入' },
   { key: 'amount', label: '成交额', tip: '概念成交额' },
-  { key: 'volRatio', label: '量比', tip: '量比>1 常见为放量' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
   { key: 'strength', label: '强度', tip: '0~100 强度' },
   { key: 'spike5m', label: '异动', tip: '短线异动热度' }
 ]
 const metricLabel = (k) => metricDefs.find(x => x.key === k)?.label || k
+const visibleMetricKeys = new Set(metricDefs.map(item => item.key))
 
 /** 搜索 */
 const searchQuery = computed({
@@ -566,7 +542,11 @@ const resetFilters = () => {
 }
 
 /** 排序 */
-const selectedMetricsSafe = computed(() => (Array.isArray(homeFilter.selectedMetrics) ? homeFilter.selectedMetrics : []))
+const selectedMetricsSafe = computed(() => (
+  Array.isArray(homeFilter.selectedMetrics)
+    ? homeFilter.selectedMetrics.filter(key => visibleMetricKeys.has(key))
+    : []
+))
 
 const selectedMetricObjs = computed({
   get: () => selectedMetricsSafe.value.map(k => ({ key: k, label: metricLabel(k) })),
@@ -583,9 +563,7 @@ const hasAnyFilter = computed(() => {
   const f = homeFilter.filters || {}
   const keys = [
     'minChange','maxChange',
-    'minNetInflowY','maxNetInflowY',
     'minAmountY','maxAmountY',
-    'minVolRatio','maxVolRatio',
     'minUpRatio','maxUpRatio',
     'minStrength','minSpike5m',
     'maxVolatility','maxDrawdown20d'
@@ -680,9 +658,7 @@ const isFavorite = (id) => !!conceptStore.getConceptById?.(id)?.favorite
 /** 筛选判断 */
 function passFilters(item, f) {
   const change = Number(item?.change ?? 0)
-  const netInflowY = Number(item?.netInflow ?? 0) / 1e8
   const amountY = Number(item?.amount ?? 0) / 1e8
-  const volRatio = Number(item?.volRatio ?? 0)
   const upRatio = Number(item?.upRatio ?? 0)
   const strength = Number(item?.strength ?? 0)
   const spike5m = Number(item?.spike5m ?? 0)
@@ -692,14 +668,8 @@ function passFilters(item, f) {
   if (f.minChange != null && change < Number(f.minChange)) return false
   if (f.maxChange != null && change > Number(f.maxChange)) return false
 
-  if (f.minNetInflowY != null && netInflowY < Number(f.minNetInflowY)) return false
-  if (f.maxNetInflowY != null && netInflowY > Number(f.maxNetInflowY)) return false
-
   if (f.minAmountY != null && amountY < Number(f.minAmountY)) return false
   if (f.maxAmountY != null && amountY > Number(f.maxAmountY)) return false
-
-  if (f.minVolRatio != null && volRatio < Number(f.minVolRatio)) return false
-  if (f.maxVolRatio != null && volRatio > Number(f.maxVolRatio)) return false
 
   if (f.minUpRatio != null && upRatio < Number(f.minUpRatio)) return false
   if (f.maxUpRatio != null && upRatio > Number(f.maxUpRatio)) return false
@@ -821,9 +791,7 @@ const summaryFiltersText = computed(() => {
   }
 
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
-  const b = range(f.minNetInflowY, f.maxNetInflowY, '亿'); if (b) parts.push(`净流入${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
-  const d = range(f.minVolRatio, f.maxVolRatio, ''); if (d) parts.push(`量比${d}`)
 
   const e = range(
     f.minUpRatio != null ? Math.round(f.minUpRatio * 100) : null,
@@ -979,6 +947,12 @@ const fmtMoneyY = (v) => {
   const y = n / 1e8
   const sign = y > 0 ? '+' : y < 0 ? '-' : ''
   return `${sign}${Math.abs(y).toFixed(2)}亿`
+}
+const fmtPriceSigned = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '--'
+  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
+  return `${sign}${Math.abs(n).toFixed(2)}`
 }
 const fmtNum = (v, d = 2) => {
   const n = Number(v)

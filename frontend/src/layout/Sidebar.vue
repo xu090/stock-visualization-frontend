@@ -78,9 +78,9 @@
                 </div>
 
                 <div class="metric-row">
-                  <span class="metric-label">净流入</span>
-                  <span class="num" :class="moneyClass(c.netInflow)">
-                    {{ fmtMoneySigned(c.netInflow) }}
+                  <span class="metric-label">涨跌额</span>
+                  <span class="num" :class="moneyClass(c.changeAmount)">
+                    {{ fmtPriceSigned(c.changeAmount) }}
                   </span>
                 </div>
               </div>
@@ -281,8 +281,8 @@
                     <span class="metric-inline" :class="chgClass(row.change)">
                       {{ fmtPctSigned(row.change) }}
                     </span>
-                    <span class="metric-inline" :class="moneyClass(row.netInflow)">
-                      {{ fmtMoneySigned(row.netInflow) }}
+                    <span class="metric-inline" :class="moneyClass(row.changeAmount)">
+                      {{ fmtPriceSigned(row.changeAmount) }}
                     </span>
                     <span class="metric-inline metric-inline--price">
                       {{ fmtPrice(row.price) }}
@@ -382,7 +382,7 @@ watch(activeTopTab, (tab) => {
   }
 })
 
-/** ✅ 自选概念补齐指标：从 conceptOverviewAll 取 change/netInflow（含系统+自定义） */
+/** ✅ 自选概念统一从 conceptStore 实时快照读取，避免被多接口反复覆盖 */
 const overviewMap = computed(() => {
   const map = Object.create(null)
   ;(conceptStore.conceptOverviewAll || []).forEach(c => { map[String(c.id)] = c })
@@ -398,7 +398,7 @@ const myConceptsEnriched = computed(() => {
       ...c,
       id,
       change: ov.change ?? c.change ?? 0,
-      netInflow: ov.netInflow ?? c.netInflow ?? 0,
+      changeAmount: ov.changeAmount ?? c.changeAmount ?? null,
 
       // 兼容字段
       change5d: ov.change5d ?? ov.rtChange5d ?? ov.change5m ?? ov.change ?? 0,
@@ -515,7 +515,7 @@ const favoriteConceptStockSections = computed(() => {
           name: base?.name || q?.name || code,
           price: Number(q?.price ?? q?.close ?? 0),
           change: Number(q?.change ?? q?.changePercent ?? 0),
-          netInflow: Number(q?.netInflow ?? 0)
+          changeAmount: Number(q?.changeAmount ?? 0)
         }
       })
       .filter(Boolean)

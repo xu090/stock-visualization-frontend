@@ -115,16 +115,6 @@
       <el-table-column prop="turnover" label="换手" width="92" sortable="custom">
         <template #default="{ row }">{{ formatTurnover(row.turnover) }}</template>
       </el-table-column>
-      <el-table-column prop="netInflow" label="净流入" width="120" sortable="custom">
-        <template #default="{ row }">
-          <span :class="{ up: row.netInflow > 0, down: row.netInflow < 0 }">{{ formatMoney(row.netInflow) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="mainInflow" label="主力" width="120" sortable="custom">
-        <template #default="{ row }">
-          <span :class="{ up: row.mainInflow > 0, down: row.mainInflow < 0 }">{{ formatMoney(row.mainInflow) }}</span>
-        </template>
-      </el-table-column>
       <el-table-column prop="mktCap" label="市值" width="120" sortable="custom">
         <template #default="{ row }">{{ formatMoney(row.mktCap) }}</template>
       </el-table-column>
@@ -134,7 +124,6 @@
         </template>
       </el-table-column>
     </el-table>
-
   </div>
 </template>
 
@@ -160,6 +149,7 @@ const query = reactive({
   direction: '',
   maPattern: ''
 })
+
 const maPatternOptions = [
   { label: '多头排列', value: 'bullish-stack' },
   { label: '空头排列', value: 'bearish-stack' },
@@ -171,7 +161,7 @@ const maPatternOptions = [
 const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, { days: props.analysisWindow }))
 const filteredStocks = computed(() => {
   const keyword = query.keyword.trim().toLowerCase()
-  return analysisPayload.value.stocks.filter((item) => {
+  return analysisPayload.value.stocks.filter(item => {
     if (keyword) {
       const text = `${item.name || ''} ${item.code || ''}`.toLowerCase()
       if (!text.includes(keyword)) return false
@@ -185,10 +175,12 @@ const filteredStocks = computed(() => {
 
 const sortState = ref({ prop: 'change', order: 'descending' })
 const defaultSort = computed(() => ({ prop: sortState.value.prop, order: sortState.value.order }))
-const toNum = (value) => {
+
+function toNum(value) {
   const n = Number(value)
   return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY
 }
+
 const sortedStocks = computed(() => {
   const list = filteredStocks.value.slice()
   const { prop, order } = sortState.value
@@ -203,51 +195,56 @@ const sortedStocks = computed(() => {
   return list
 })
 
-const onSortChange = ({ prop, order }) => {
+function onSortChange({ prop, order }) {
   sortState.value = { prop, order }
 }
-const resetFilters = () => {
+
+function resetFilters() {
   query.keyword = ''
   query.correlation = ''
   query.direction = ''
   query.maPattern = ''
 }
 
-const normalizeCode = (raw) => {
+function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
-  s = s.replace(/\.(SZ|SH)$/i, '')
-  s = s.replace(/^(sz|sh)/i, '')
+  s = s.replace(/\.(SZ|SH|BJ)$/i, '')
+  s = s.replace(/^(sz|sh|bj)/i, '')
   return s
 }
-const goStock = (row) => {
+
+function goStock(row) {
   const code = normalizeCode(row?.code)
   if (!code) return
   router.push(`/stock/${code}`)
 }
 
-const isStockFavorite = (code) => stockStore.isStockFavorite(code)
-const toggleStockFav = (code) => {
+const isStockFavorite = code => stockStore.isStockFavorite(code)
+const toggleStockFav = code => {
   if (isStockFavorite(code)) stockStore.removeStockFromMyStocks(code)
   else stockStore.addStockToMyStocks(code)
 }
 
-const formatPct = (value) => {
+function formatPct(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 }
-const formatTurnover = (value) => {
+
+function formatTurnover(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   return `${n.toFixed(1)}%`
 }
-const formatCoeff = (value) => {
+
+function formatCoeff(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   return n.toFixed(3)
 }
-const formatMoney = (value) => {
+
+function formatMoney(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   const abs = Math.abs(n)
@@ -256,7 +253,8 @@ const formatMoney = (value) => {
   if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
   return `${sign}${abs.toFixed(0)}`
 }
-const roleTagType = (role) => {
+
+function roleTagType(role) {
   if (role === '核心联动股') return 'danger'
   if (role === '领涨股') return 'warning'
   if (role === '背离股') return 'success'

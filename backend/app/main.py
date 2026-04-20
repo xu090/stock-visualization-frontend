@@ -7,6 +7,11 @@ from pydantic import BaseModel
 
 from app.config import AUTO_BOOTSTRAP_CONCEPTS, ENABLE_KAFKA_CONSUMER
 from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
+from app.concept_market_service import (
+    fetch_concept_capital_flow_history,
+    fetch_concept_kline,
+    fetch_concept_market_detail,
+)
 from app.concept_service import (
     create_user_concept,
     delete_user_concept,
@@ -22,6 +27,11 @@ from app.db import get_conn
 from app.kafka_consumer import run_event_consumer, run_stock_time_sharing_consumer
 from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_feed, fetch_news_list
 from app.stock_names import backfill_stock_names
+from app.stock_market_service import (
+    fetch_stock_capital_flow_history,
+    fetch_stock_kline,
+    fetch_stock_market_detail,
+)
 from app.stock_service import fetch_stock_detail, search_stocks
 from app.strategy_service import (
     bootstrap_select_strategies,
@@ -264,12 +274,32 @@ def get_stock_detail_api(code: str) -> dict:
     return {"data": row}
 
 
+@app.get("/api/stocks/{code}/market-detail")
+def get_stock_market_detail_api(code: str, concept_id: str | None = None, sector: str | None = None) -> dict:
+    row = fetch_stock_market_detail(normalize_code(code), concept_id=concept_id, sector_name=sector)
+    if row is None:
+        raise HTTPException(status_code=404, detail="stock not found")
+    return {"data": row}
+
+
 @app.get("/api/stocks/{code}/timesharing")
 def get_stock_time_sharing(code: str, limit: int = 120) -> dict:
     # 对 limit 做边界保护，避免一次查太多分钟数据。
     normalized = normalize_code(code)
     rows = fetch_time_sharing(normalized, min(max(limit, 1), 240))
     return {"data": rows}
+
+
+@app.get("/api/stocks/{code}/capital-flow-history")
+def get_stock_capital_flow_history_api(code: str, concept_id: str | None = None, sector: str | None = None) -> dict:
+    row = fetch_stock_capital_flow_history(normalize_code(code), concept_id=concept_id, sector_name=sector)
+    return {"data": row}
+
+
+@app.get("/api/stocks/{code}/kline")
+def get_stock_kline_api(code: str, period: str = "1m") -> dict:
+    row = fetch_stock_kline(normalize_code(code), period=period)
+    return {"data": row}
 
 
 @app.get("/api/concepts/overview")
@@ -342,6 +372,30 @@ def get_concept_macro_api(concept_id: str, limit: int = 240) -> dict:
 def get_concept_time_sharing(concept_id: str, limit: int = 120) -> dict:
     rows = fetch_concept_time_sharing(concept_id, min(max(limit, 1), 240))
     return {"data": rows}
+
+
+@app.get("/api/concepts/{concept_id}/market-detail")
+def get_concept_market_detail_api(concept_id: str) -> dict:
+    row = fetch_concept_market_detail(concept_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
+@app.get("/api/concepts/{concept_id}/capital-flow-history")
+def get_concept_capital_flow_history_api(concept_id: str) -> dict:
+    row = fetch_concept_capital_flow_history(concept_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
+@app.get("/api/concepts/{concept_id}/kline")
+def get_concept_kline_api(concept_id: str, period: str = "1m") -> dict:
+    row = fetch_concept_kline(concept_id, period=period)
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
 
 
 @app.get("/api/concepts/{concept_id}/news")

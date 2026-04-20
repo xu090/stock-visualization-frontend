@@ -94,7 +94,7 @@ export default {
 
       try {
         await Promise.allSettled([
-          conceptStore.ensureLoaded(),
+          conceptStore.ensureLoaded(true),
           strategyStore.ensureLoaded()
         ])
 
