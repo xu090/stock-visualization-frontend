@@ -10,11 +10,11 @@
     </div>
 
     <div class="f-row">
-      <div class="f-name">净流入（亿）</div>
+      <div class="f-name">涨跌额</div>
       <div class="f-range">
-        <el-input-number v-model="filters.minNetInflowY" :min="-50" :max="50" :step="0.1" controls-position="right" placeholder="≥" />
+        <el-input-number v-model="filters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
         <span class="sep">~</span>
-        <el-input-number v-model="filters.maxNetInflowY" :min="-50" :max="50" :step="0.1" controls-position="right" placeholder="≤" />
+        <el-input-number v-model="filters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
       </div>
     </div>
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="concept-management">
     <ConceptMacroCharts />
     <div class="topbar" id="tour-topbar">
@@ -286,6 +286,18 @@
                 <span class="v strong">{{ item.strength ?? '--' }} / {{ item.spike5m ?? '--' }}</span>
               </div>
             </div>
+
+            <div v-if="cardKline(item.id)" class="card-kline">
+              <KlinePreview
+                :times="cardKline(item.id).times"
+                :data="cardKline(item.id).data"
+                :height="96"
+              />
+            </div>
+
+            <div class="card-foot">
+              <span class="update-time">更新时间 {{ fmtUpdateTime(item.latestTs) }}</span>
+            </div>
           </el-card>
         </el-col>
       </el-row>
@@ -369,7 +381,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled, Delete, Setting } from '@element-plus/icons-vue'
@@ -378,8 +390,10 @@ import Draggable from 'vuedraggable'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 import SaveStrategyDialog from '@/components/SaveStrategyDialog.vue'
 import ConceptMacroCharts from '@/components/ConceptMacroCharts.vue'
+import KlinePreview from '@/components/KlinePreview.vue'
 
 import { useConceptStore } from '@/stores/concept'
+import { useConceptDetailStore } from '@/stores/conceptDetail'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useNewsStore } from '@/stores/news'
@@ -388,6 +402,7 @@ import { autoStartHomeTourOnce } from '@/utils/homeTour'
 
 const router = useRouter()
 const conceptStore = useConceptStore()
+const conceptDetailStore = useConceptDetailStore()
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
 const newsStore = useNewsStore()
@@ -463,6 +478,7 @@ function conceptNameById(id) {
 /** 指标定义 */
 const metricDefs = [
   { key: 'change', label: '涨跌幅', tip: '概念当前涨跌幅' },
+  { key: 'changeAmount', label: '涨跌额', tip: '概念当前涨跌额' },
   { key: 'amount', label: '成交额', tip: '概念成交额' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
   { key: 'strength', label: '强度', tip: '0~100 强度' },
@@ -486,8 +502,12 @@ const ensureFilterShape = () => {
   if (!('minChange' in f)) f.minChange = null
   if (!('maxChange' in f)) f.maxChange = null
 
-  if (!('minNetInflowY' in f)) f.minNetInflowY = null
-  if (!('maxNetInflowY' in f)) f.maxNetInflowY = null
+  if (f.minChangeAmount == null && f.minNetInflowY != null) f.minChangeAmount = f.minNetInflowY
+  if (f.maxChangeAmount == null && f.maxNetInflowY != null) f.maxChangeAmount = f.maxNetInflowY
+  if (!('minChangeAmount' in f)) f.minChangeAmount = null
+  if (!('maxChangeAmount' in f)) f.maxChangeAmount = null
+  delete f.minNetInflowY
+  delete f.maxNetInflowY
 
   if (!('minAmountY' in f)) f.minAmountY = null
   if (!('maxAmountY' in f)) f.maxAmountY = null
@@ -527,8 +547,8 @@ const resetFilters = () => {
   const f = homeFilter.filters
   f.minChange = null
   f.maxChange = null
-  f.minNetInflowY = null
-  f.maxNetInflowY = null
+  f.minChangeAmount = null
+  f.maxChangeAmount = null
   f.minAmountY = null
   f.maxAmountY = null
   f.minVolRatio = null
@@ -563,6 +583,7 @@ const hasAnyFilter = computed(() => {
   const f = homeFilter.filters || {}
   const keys = [
     'minChange','maxChange',
+    'minChangeAmount','maxChangeAmount',
     'minAmountY','maxAmountY',
     'minUpRatio','maxUpRatio',
     'minStrength','minSpike5m',
@@ -658,6 +679,7 @@ const isFavorite = (id) => !!conceptStore.getConceptById?.(id)?.favorite
 /** 筛选判断 */
 function passFilters(item, f) {
   const change = Number(item?.change ?? 0)
+  const changeAmount = Number(item?.changeAmount ?? 0)
   const amountY = Number(item?.amount ?? 0) / 1e8
   const upRatio = Number(item?.upRatio ?? 0)
   const strength = Number(item?.strength ?? 0)
@@ -667,6 +689,8 @@ function passFilters(item, f) {
 
   if (f.minChange != null && change < Number(f.minChange)) return false
   if (f.maxChange != null && change > Number(f.maxChange)) return false
+  if (f.minChangeAmount != null && changeAmount < Number(f.minChangeAmount)) return false
+  if (f.maxChangeAmount != null && changeAmount > Number(f.maxChangeAmount)) return false
 
   if (f.minAmountY != null && amountY < Number(f.minAmountY)) return false
   if (f.maxAmountY != null && amountY > Number(f.maxAmountY)) return false
@@ -772,6 +796,51 @@ const displayList = computed(() => {
   return withRank.map(x => x.item)
 })
 
+const cardKlineLoading = ref({})
+
+function cardKline(id) {
+  return conceptDetailStore.klineByKey?.[`${String(id)}:1m`] || null
+}
+
+async function ensureCardKlines(list = []) {
+  const topIds = (list || [])
+    .slice(0, 9)
+    .map(item => String(item?.id || ''))
+    .filter(Boolean)
+
+  const pending = topIds.filter(id => {
+    if (cardKline(id)) return false
+    if (cardKlineLoading.value[id]) return false
+    return true
+  })
+
+  if (!pending.length) return
+
+  pending.forEach(id => {
+    cardKlineLoading.value = { ...cardKlineLoading.value, [id]: true }
+  })
+
+  await Promise.all(
+    pending.map(async id => {
+      try {
+        await conceptDetailStore.fetchKline(id, '1m')
+      } catch (error) {
+        return null
+      } finally {
+        cardKlineLoading.value = { ...cardKlineLoading.value, [id]: false }
+      }
+    })
+  )
+}
+
+watch(
+  displayList,
+  list => {
+    ensureCardKlines(list)
+  },
+  { immediate: true }
+)
+
 /** 筛选摘要 */
 const summaryFiltersText = computed(() => {
   const f = homeFilter.filters || {}
@@ -875,7 +944,9 @@ const removeUserConcept = async (item) => {
     }
 
     ElMessage.success('已删除')
-  } catch (e) {}
+  } catch (e) {
+    return
+  }
 }
 
 /** 新建/编辑保存 */
@@ -954,15 +1025,19 @@ const fmtPriceSigned = (v) => {
   const sign = n > 0 ? '+' : n < 0 ? '-' : ''
   return `${sign}${Math.abs(n).toFixed(2)}`
 }
-const fmtNum = (v, d = 2) => {
-  const n = Number(v)
-  if (Number.isNaN(n)) return '--'
-  return n.toFixed(d)
-}
 const fmtUpRatio = (v) => {
   const n = Number(v)
   if (Number.isNaN(n)) return '--'
   return `${Math.round(n * 100)}%`
+}
+const fmtUpdateTime = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return '--'
+  const d = new Date(n)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
 }
 </script>
 
@@ -996,6 +1071,11 @@ const fmtUpRatio = (v) => {
 .fav-icon-btn:hover .fav-star{
   transform: translateY(-1px);
   color: #f59e0b;
+}
+
+.card-kline{
+  margin-top: 10px;
+  padding: 6px 0 2px;
 }
 
 .topbar{
@@ -1295,6 +1375,18 @@ const fmtUpRatio = (v) => {
 .actions :deep(.el-button){ padding:0; height:22px; font-weight:700; }
 
 .metrics{ border-top:1px dashed rgba(0,0,0,.08); padding-top:10px; display:grid; gap:7px; }
+.card-foot{
+  margin-top:10px;
+  display:flex;
+  justify-content:flex-end;
+   padding-top:10px;
+  border-top:1px dashed rgba(0,0,0,.08);
+}
+.update-time{
+  font-size:12px;
+  color:#909399;
+  line-height:1;
+}
 .metric-row{
   display:grid;
   grid-template-columns: 1fr auto;

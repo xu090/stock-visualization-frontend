@@ -6,6 +6,31 @@ function normId(id) {
   return String(id ?? '').trim()
 }
 
+function toNullableNumber(value) {
+  if (value == null || value === '') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function keepStableRealtimeMetric(current, next) {
+  const currentTs = Number(current?.latestTs)
+  const nextTs = Number(next?.latestTs)
+  const sameSnapshot = Number.isFinite(currentTs) && Number.isFinite(nextTs) && currentTs > 0 && currentTs === nextTs
+  if (!sameSnapshot) return next
+
+  const currentHasMove = Number(current?.change) !== 0 || Number(current?.changeAmount) !== 0
+  const nextLooksReset = Number(next?.change) === 0 && Number(next?.changeAmount) === 0
+  if (!currentHasMove || !nextLooksReset) return next
+
+  return {
+    ...next,
+    change: current?.change ?? next.change,
+    changeAmount: current?.changeAmount ?? next.changeAmount,
+    rtChange: current?.rtChange ?? next.rtChange,
+    rtChangeAmount: current?.rtChangeAmount ?? next.rtChangeAmount,
+  }
+}
+
 function normalizeConcept(item = {}) {
   const stockCodes = Array.isArray(item.stockCodes)
     ? item.stockCodes.map(code => String(code).trim()).filter(Boolean)
@@ -21,23 +46,23 @@ function normalizeConcept(item = {}) {
     editable: !!item.editable,
     favorite: !!item.favorite,
     source: item.source || '',
-    change: Number(change || 0),
-    changeAmount: changeAmount == null ? null : Number(changeAmount),
-    change1m: Number(item.change1m || 0),
-    change5m: Number(item.change5m || item.spike5m || 0),
-    change20d: Number(item.change20d || 0),
-    drawdown20d: Number(item.drawdown20d || 0),
-    netInflow: Number(item.netInflow || 0),
-    mainInflow: Number(item.mainInflow || 0),
-    amount: Number(item.amount || 0),
-    turnover: Number(item.turnover || 0),
-    volRatio: Number(item.volRatio || item.volumeRatio || 0),
-    upRatio: Number(item.upRatio || 0),
-    limitUp: Number(item.limitUp || 0),
-    limitDown: Number(item.limitDown || 0),
-    strength: Number(item.strength || 0),
-    spike5m: Number(item.spike5m || 0),
-    volatility: Number(item.volatility || 0),
+    change: toNullableNumber(change),
+    changeAmount: toNullableNumber(changeAmount),
+    change1m: toNullableNumber(item.change1m),
+    change5m: toNullableNumber(item.change5m ?? item.spike5m),
+    change20d: toNullableNumber(item.change20d),
+    drawdown20d: toNullableNumber(item.drawdown20d),
+    netInflow: toNullableNumber(item.netInflow),
+    mainInflow: toNullableNumber(item.mainInflow),
+    amount: toNullableNumber(item.amount),
+    turnover: toNullableNumber(item.turnover),
+    volRatio: toNullableNumber(item.volRatio ?? item.volumeRatio),
+    upRatio: toNullableNumber(item.upRatio),
+    limitUp: toNullableNumber(item.limitUp),
+    limitDown: toNullableNumber(item.limitDown),
+    strength: toNullableNumber(item.strength),
+    spike5m: toNullableNumber(item.spike5m),
+    volatility: toNullableNumber(item.volatility),
     stockCount: Number(item.stockCount || stockCodes.length || 0),
     activeStockCount: Number(item.activeStockCount || 0),
     open: item.open == null ? null : Number(item.open),
@@ -47,25 +72,26 @@ function normalizeConcept(item = {}) {
     preClose: item.preClose == null ? null : Number(item.preClose),
     volume: item.volume == null ? null : Number(item.volume),
     latestTs: item.latestTs || null,
+    updatedAt: item.updatedAt || null,
     curve: Array.isArray(item.curve) ? item.curve : [],
 
-    rtChange: Number(change || 0),
-    rtChangeAmount: changeAmount == null ? null : Number(changeAmount),
-    rtChange1m: Number(item.change1m || 0),
-    rtChange5m: Number(item.change5m || item.spike5m || 0),
-    rtChange20d: Number(item.change20d || 0),
-    rtNetInflow: Number(item.netInflow || 0),
-    rtMainInflow: Number(item.mainInflow || 0),
-    rtAmount: Number(item.amount || 0),
-    rtTurnover: Number(item.turnover || 0),
-    rtVolRatio: Number(item.volRatio || item.volumeRatio || 0),
-    rtUpRatio: Number(item.upRatio || 0),
-    rtLimitUp: Number(item.limitUp || 0),
-    rtLimitDown: Number(item.limitDown || 0),
-    rtStrength: Number(item.strength || 0),
-    rtSpike5m: Number(item.spike5m || 0),
-    rtVolatility: Number(item.volatility || 0),
-    rtDrawdown20d: Number(item.drawdown20d || 0),
+    rtChange: toNullableNumber(change),
+    rtChangeAmount: toNullableNumber(changeAmount),
+    rtChange1m: toNullableNumber(item.change1m),
+    rtChange5m: toNullableNumber(item.change5m ?? item.spike5m),
+    rtChange20d: toNullableNumber(item.change20d),
+    rtNetInflow: toNullableNumber(item.netInflow),
+    rtMainInflow: toNullableNumber(item.mainInflow),
+    rtAmount: toNullableNumber(item.amount),
+    rtTurnover: toNullableNumber(item.turnover),
+    rtVolRatio: toNullableNumber(item.volRatio ?? item.volumeRatio),
+    rtUpRatio: toNullableNumber(item.upRatio),
+    rtLimitUp: toNullableNumber(item.limitUp),
+    rtLimitDown: toNullableNumber(item.limitDown),
+    rtStrength: toNullableNumber(item.strength),
+    rtSpike5m: toNullableNumber(item.spike5m),
+    rtVolatility: toNullableNumber(item.volatility),
+    rtDrawdown20d: toNullableNumber(item.drawdown20d),
     rtOpen: item.open == null ? null : Number(item.open),
     rtClose: item.close == null ? null : Number(item.close),
     rtHigh: item.high == null ? null : Number(item.high),
@@ -144,8 +170,10 @@ export const useConceptStore = defineStore('concept', {
       const idx = this.conceptList.findIndex(c => normId(c.id) === next.id)
       if (idx >= 0) {
         const current = this.conceptList[idx]
-        const merged = { ...current, ...next }
+        const merged = keepStableRealtimeMetric(current, { ...current, ...next })
+        if (next.change == null) merged.change = current?.change ?? null
         if (next.changeAmount == null) merged.changeAmount = current?.changeAmount ?? null
+        if (next.rtChange == null) merged.rtChange = current?.rtChange ?? null
         if (next.rtChangeAmount == null) merged.rtChangeAmount = current?.rtChangeAmount ?? null
         this.conceptList[idx] = merged
       } else {
@@ -223,6 +251,7 @@ export const useConceptStore = defineStore('concept', {
         low: detail?.low ?? current.low,
         preClose: detail?.preClose ?? current.preClose,
         latestTs: detail?.latestTs ?? current.latestTs,
+        updatedAt: detail?.updatedAt ?? current.updatedAt,
         change: detail?.changeRate ?? current.change,
         changeAmount: detail?.change ?? current.changeAmount,
       })

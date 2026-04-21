@@ -233,7 +233,7 @@ const homeFilter = useHomeFilterStore()
 
 const metricDefs = [
   { key: 'change', label: '涨跌幅', tip: '概念当前涨跌幅' },
-  { key: 'netInflow', label: '净流入', tip: '概念资金净流入' },
+  { key: 'changeAmount', label: '涨跌额', tip: '概念当前涨跌额' },
   { key: 'amount', label: '成交额', tip: '概念成交额' },
   { key: 'volRatio', label: '量比', tip: '量比>1 常见为放量' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
@@ -271,8 +271,8 @@ const hasVisibleStrategies = computed(() => favoriteStrategies.value.length > 0 
 const emptySelectFilters = () => ({
   minChange: null,
   maxChange: null,
-  minNetInflowY: null,
-  maxNetInflowY: null,
+  minChangeAmount: null,
+  maxChangeAmount: null,
   minAmountY: null,
   maxAmountY: null,
   minVolRatio: null,
@@ -292,8 +292,26 @@ const defaultSelectSnapshot = () => ({
   searchQuery: ''
 })
 
-const snapshotWithoutSearch = snap => {
+const normalizeStrategySnapshot = snap => {
   const base = snap || {}
+  const filters = { ...(base.filters || {}) }
+  if (filters.minChangeAmount == null && filters.minNetInflowY != null) filters.minChangeAmount = filters.minNetInflowY
+  if (filters.maxChangeAmount == null && filters.maxNetInflowY != null) filters.maxChangeAmount = filters.maxNetInflowY
+  delete filters.minNetInflowY
+  delete filters.maxNetInflowY
+  return {
+    ...base,
+    selectedMetrics: Array.isArray(base.selectedMetrics)
+      ? base.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+      : [],
+    filters,
+  }
+}
+
+const normalizeStrategyFilters = filters => normalizeStrategySnapshot({ filters }).filters || {}
+
+const snapshotWithoutSearch = snap => {
+  const base = normalizeStrategySnapshot(snap)
   const rest = { ...base }
   delete rest.searchQuery
   return { ...rest, searchQuery: '' }
@@ -356,7 +374,8 @@ const removeStrategySafe = async s => {
 const ensureFilterShape = filters => {
   const f = filters || {}
   if (!('maxChange' in f)) f.maxChange = null
-  if (!('maxNetInflowY' in f)) f.maxNetInflowY = null
+  if (!('minChangeAmount' in f)) f.minChangeAmount = null
+  if (!('maxChangeAmount' in f)) f.maxChangeAmount = null
   if (!('maxAmountY' in f)) f.maxAmountY = null
   if (!('maxVolRatio' in f)) f.maxVolRatio = null
   if (!('maxUpRatio' in f)) f.maxUpRatio = null
@@ -364,12 +383,13 @@ const ensureFilterShape = filters => {
 }
 
 const metricsTextShort = snap => {
-  const keys = (snap?.selectedMetrics || []).filter(Boolean).slice(0, 3)
+  const keys = (normalizeStrategySnapshot(snap)?.selectedMetrics || []).filter(Boolean).slice(0, 3)
   if (!keys.length) return '无'
   return keys.map(key => metricDefs.find(item => item.key === key)?.label || key).join('、')
 }
 
 const buildFilterParts = f => {
+  f = normalizeStrategyFilters(f)
   const parts = []
   const range = (min, max, unit = '') => {
     const hasMin = min != null
@@ -380,7 +400,7 @@ const buildFilterParts = f => {
     return `<=${max}${unit}`
   }
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
-  const b = range(f.minNetInflowY, f.maxNetInflowY, '亿'); if (b) parts.push(`净流入${b}`)
+  const b = range(f.minChangeAmount, f.maxChangeAmount, ''); if (b) parts.push(`涨跌额${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
   const d = range(f.minVolRatio, f.maxVolRatio, ''); if (d) parts.push(`量比${d}`)
   const e = range(

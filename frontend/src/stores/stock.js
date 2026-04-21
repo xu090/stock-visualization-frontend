@@ -13,10 +13,11 @@ function normalizeCode(raw) {
 function normalizeQuote(item = {}) {
   const code = normalizeCode(item.code)
   const change = item.change ?? item.changePercent ?? 0
+  const name = typeof item.name === 'string' ? item.name.trim() : ''
   return {
     ...item,
     code,
-    name: item.name || code,
+    name: name || undefined,
     price: item.price ?? item.close ?? 0,
     close: item.close ?? item.price ?? 0,
     change,
@@ -26,9 +27,54 @@ function normalizeQuote(item = {}) {
   }
 }
 
+function buildBaseMap(list = []) {
+  const map = Object.create(null)
+  ;(list || []).forEach(item => {
+    const code = normalizeCode(item?.code)
+    if (!code) return
+    map[code] = {
+      ...(map[code] || {}),
+      ...item,
+      code
+    }
+  })
+  return map
+}
+
+function pickBaseName(existingName, incomingName, code) {
+  const normalizedCode = normalizeCode(code)
+  const current = String(existingName || '').trim()
+  const next = String(incomingName || '').trim()
+  if (next && next !== normalizedCode) return next
+  if (current && current !== normalizedCode) return current
+  return next || current || normalizedCode
+}
+
+function buildQuoteMeta(ts) {
+  const updatedAt = Number(ts)
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
+    return {
+      updatedAt: null,
+      quoteAgeMs: Number.POSITIVE_INFINITY,
+      isRealtime: false,
+      isDelayed: false,
+      isStale: true,
+    }
+  }
+
+  const quoteAgeMs = Math.max(0, Date.now() - updatedAt)
+  return {
+    updatedAt,
+    quoteAgeMs,
+    isRealtime: quoteAgeMs <= 10 * 1000,
+    isDelayed: quoteAgeMs > 10 * 1000 && quoteAgeMs <= 60 * 1000,
+    isStale: quoteAgeMs > 60 * 1000,
+  }
+}
+
 export const useStockStore = defineStore('stock', {
   state: () => {
-    // 从 localStorage 加载缓存的股票基础数据
+    // 浠?localStorage 鍔犺浇缂撳瓨鐨勮偂绁ㄥ熀纭€鏁版嵁
     let cachedStockBaseList = []
     try {
       const cached = localStorage.getItem('stock_base_list')
@@ -41,21 +87,16 @@ export const useStockStore = defineStore('stock', {
 
     return {
       stockBaseList: cachedStockBaseList,
+      stockBaseMap: buildBaseMap(cachedStockBaseList),
       quotesByCode: {},
       myStockCodes: ['603501', '688167', '002371'],
-      _quoteTimer: null
+      _quoteTimer: null,
+      stockBaseLoaded: cachedStockBaseList.length > 0
     }
   },
 
   getters: {
-    baseByCode: (state) => {
-      const map = Object.create(null)
-      state.stockBaseList.forEach(s => {
-        const c = normalizeCode(s.code)
-        if (c) map[c] = { ...s, code: c }
-      })
-      return map
-    },
+    baseByCode: (state) => state.stockBaseMap,
 
     getBaseByCode() {
       return (code) => this.baseByCode[normalizeCode(code)] || null
@@ -74,7 +115,14 @@ export const useStockStore = defineStore('stock', {
         const c = normalizeCode(code)
         const base = this.baseByCode[c] || { code: c, name: c }
         const quote = this.quotesByCode[c] || {}
-        return { ...base, ...quote, code: c, name: quote.name || base.name || c, concept: conceptName || '' }
+        return {
+          ...base,
+          ...quote,
+          ...buildQuoteMeta(quote.ts),
+          code: c,
+          name: quote.name || base.name || c,
+          concept: conceptName || '',
+        }
       }
     },
 
@@ -97,12 +145,25 @@ export const useStockStore = defineStore('stock', {
     upsertBase(item = {}) {
       const code = normalizeCode(item.code)
       if (!code) return
-      const next = { code, name: item.name || code, marketCode: item.marketCode || item.market_code || '' }
+      const current = this.stockBaseMap[code] || this.stockBaseList.find(s => normalizeCode(s.code) === code) || {}
+      const next = {
+        code,
+        name: pickBaseName(current.name, item.name, code),
+        marketCode: item.marketCode || item.market_code || current.marketCode || current.market_code || ''
+      }
       const idx = this.stockBaseList.findIndex(s => normalizeCode(s.code) === code)
       if (idx >= 0) this.stockBaseList[idx] = { ...this.stockBaseList[idx], ...next }
       else this.stockBaseList.push(next)
+      this.stockBaseMap = {
+        ...this.stockBaseMap,
+        [code]: {
+          ...(this.stockBaseMap[code] || {}),
+          ...next
+        }
+      }
+      this.stockBaseLoaded = true
 
-      // 持久化到 localStorage
+      // 鎸佷箙鍖栧埌 localStorage
       try {
         localStorage.setItem('stock_base_list', JSON.stringify(this.stockBaseList))
       } catch (e) {
@@ -120,11 +181,14 @@ export const useStockStore = defineStore('stock', {
       this.upsertBase(quote)
     },
 
-    async fetchQuotes(codes = []) {
+    async fetchQuotes(codes = [], options = {}) {
       const uniq = Array.from(new Set((codes || []).map(normalizeCode).filter(Boolean)))
       if (!uniq.length) return
 
-      const rows = await apiPost('/api/quotes', { codes: uniq })
+      const rows = await apiPost('/api/quotes', {
+        codes: uniq,
+        snapshotTs: options?.snapshotTs || null,
+      })
       ;(rows || []).forEach(row => this.upsertQuote(row))
 
       const missing = uniq.filter(code => !this.baseByCode[code] || this.baseByCode[code].name === code)
@@ -143,20 +207,23 @@ export const useStockStore = defineStore('stock', {
     },
 
     /**
-     * 批量加载股票基础数据并缓存
-     * 用于初始化时从服务器获取所有股票基础信息
+     * 鎵归噺鍔犺浇鑲＄エ鍩虹鏁版嵁骞剁紦瀛?
+     * 鐢ㄤ簬鍒濆鍖栨椂浠庢湇鍔″櫒鑾峰彇鎵€鏈夎偂绁ㄥ熀纭€淇℃伅
      */
     async loadStockBaseList() {
       try {
         // 如果已有数据且不为空，跳过加载
         if (this.stockBaseList.length > 0) {
+          this.stockBaseLoaded = true
           return this.stockBaseList
         }
 
         const rows = await apiGet('/api/stocks/base')
         if (Array.isArray(rows)) {
           this.stockBaseList = rows
-          // 持久化到 localStorage
+          this.stockBaseMap = buildBaseMap(rows)
+          this.stockBaseLoaded = true
+          // 鎸佷箙鍖栧埌 localStorage
           try {
             localStorage.setItem('stock_base_list', JSON.stringify(this.stockBaseList))
           } catch (e) {

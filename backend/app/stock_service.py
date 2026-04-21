@@ -10,20 +10,41 @@ def _safe_num(value, default: float = 0.0) -> float:
         return default
 
 
+def _calc_change_metrics(close_value, pre_close_value, raw_change=None, raw_change_percent=None) -> tuple[float, float]:
+    close = _safe_num(close_value, 0.0)
+    pre_close = _safe_num(pre_close_value, 0.0)
+    if close > 0 and pre_close > 0:
+      change_amount = round(close - pre_close, 2)
+      change_percent = round((change_amount / pre_close) * 100, 2)
+      return change_amount, change_percent
+
+    change_amount = round(_safe_num(raw_change, 0.0), 2)
+    change_percent = round(_safe_num(raw_change_percent, 0.0), 2)
+    return change_amount, change_percent
+
+
 def _map_stock_row(row: dict) -> dict:
+    close = _safe_num(row["close"], 0.0)
+    pre_close = _safe_num(row["previous_close"], 0.0)
+    change_amount, change_percent = _calc_change_metrics(
+        close,
+        pre_close,
+        raw_change=row.get("udp"),
+        raw_change_percent=row.get("udf"),
+    )
     return {
         "code": row["code"],
         "name": row["name"] or row["code"],
         "marketCode": row["market_code"],
-        "price": _safe_num(row["close"], 0.0),
-        "preClose": _safe_num(row["previous_close"], 0.0),
+        "price": close,
+        "preClose": pre_close,
         "open": _safe_num(row["open"], 0.0),
-        "close": _safe_num(row["close"], 0.0),
+        "close": close,
         "high": _safe_num(row["high"], 0.0),
         "low": _safe_num(row["low"], 0.0),
-        "changePercent": _safe_num(row["udf"], 0.0),
-        "change": _safe_num(row["udf"], 0.0),
-        "changeAmount": _safe_num(row["udp"], 0.0),
+        "changePercent": change_percent,
+        "change": change_percent,
+        "changeAmount": change_amount,
         "amount": _safe_num(row["amount"], 0.0),
         "volume": row["vol"] or 0,
         "turnover": _safe_num(row["tor"], 0.0),

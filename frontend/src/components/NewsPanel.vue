@@ -616,7 +616,7 @@ function conceptNameById(id) {
 .nd-brief{ color:#303133; font-size:13px; line-height:1.8; }
 .nd-list{ margin:0; padding-left:18px; color:#303133; font-size:13px; line-height:1.7;}
 .nd-list li{ margin:3px 0;}
-.nd-content{ color:#303133; font-size:14px; line-height:1.85;}
+.nd-content{ color:#303133; font-size:14px; line-height:1.85; height:450px; overflow-y:auto; padding-right:6px; }
 .nd-content p{ margin:0 0 12px 0;}
 .nd-content :deep(p){ margin:0 0 12px 0; }
 .nd-content :deep(strong){ font-weight:900; }

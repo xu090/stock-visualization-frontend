@@ -3,8 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from app.concept_service import fetch_concept_macro, fetch_concept_profile, fetch_concept_stocks, fetch_concept_time_sharing
-from app.db import get_conn
+from app.concept_realtime_service import fetch_concept_macro, fetch_concept_realtime_snapshot
+from app.concept_service import (
+    _concept_sector_name,
+    _fetch_sector_index_rows,
+    fetch_concept_profile,
+    fetch_concept_stocks,
+    fetch_concept_time_sharing,
+)
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -16,54 +22,12 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _table_exists(table_name: str) -> bool:
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT to_regclass(%s) AS regclass", (f"public.{table_name}",))
-            row = cur.fetchone()
-    return bool(row and row["regclass"])
-
-
-def _query_one(sql: str, params: tuple[Any, ...]) -> dict | None:
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.fetchone()
-
-
-def _query_all(sql: str, params: tuple[Any, ...]) -> list[dict]:
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.fetchall()
-
-
-def _concept_map(concept_id: str, concept_name: str) -> dict[str, str]:
-    stock_table_map = {
-        "semiconductor": "stock_semiconductor",
-        "intelligent_driving": "stock_intelligent_driving",
-        "robot": "stock_robot",
-        "military": "stock_military",
-    }
-    capital_flow_table_map = {
-        "semiconductor": "stock_capital_flow_semiconductor",
-        "intelligent_driving": "stock_capital_flow_intelligent_driving",
-        "robot": "stock_capital_flow_robot",
-        "military": "stock_capital_flow_military",
-    }
-    return {
-        "sector_name": concept_name,
-        "stock_table": stock_table_map.get(concept_id, ""),
-        "stock_capital_flow_table": capital_flow_table_map.get(concept_id, ""),
-    }
-
-
 def _build_detail_fallback(concept_id: str) -> dict | None:
     macro = fetch_concept_macro(concept_id)
     if macro is None:
         return None
 
-    stocks = fetch_concept_stocks(concept_id)
+    stocks = fetch_concept_stocks(concept_id, snapshot_ts=macro.get("latestTs"))
     up_count = sum(1 for item in stocks if _safe_float(item.get("change")) > 0)
     down_count = sum(1 for item in stocks if _safe_float(item.get("change")) < 0)
     leader = None
@@ -73,10 +37,13 @@ def _build_detail_fallback(concept_id: str) -> dict | None:
 
     curve = macro.get("curve") or []
     latest_point = curve[-1] if curve else {}
-    pre_close = 0.0
+    open_price = _safe_float(latest_point.get("open"), latest_point.get("close"))
     close = _safe_float(latest_point.get("close"), 0.0)
+    high_price = _safe_float(latest_point.get("high"), latest_point.get("close"))
+    low_price = _safe_float(latest_point.get("low"), latest_point.get("close"))
+    pre_close = _safe_float(latest_point.get("preClose"), 0.0)
     change_pct = _safe_float(macro.get("change"), 0.0)
-    if close and change_pct is not None:
+    if not pre_close and close and change_pct is not None:
         pre_close = close / (1 + (change_pct / 100)) if change_pct != -100 else 0.0
 
     return {
@@ -91,19 +58,20 @@ def _build_detail_fallback(concept_id: str) -> dict | None:
             "name": leader.get("name"),
             "change": round(_safe_float(leader.get("change")), 2),
         } if leader else None,
-        "open": round(_safe_float(latest_point.get("close"), close), 2),
+        "open": round(_safe_float(open_price, close), 2),
         "close": round(close, 2),
-        "high": round(_safe_float(latest_point.get("close"), close), 2),
-        "low": round(_safe_float(latest_point.get("close"), close), 2),
+        "high": round(_safe_float(high_price, close), 2),
+        "low": round(_safe_float(low_price, close), 2),
         "preClose": round(pre_close, 2),
         "change": round(close - pre_close, 2),
         "changeRate": round(change_pct, 2),
-        "volume": 0.0,
+        "volume": _safe_float(latest_point.get("volume"), 0.0),
         "amount": _safe_float(macro.get("amount"), 0.0),
         "netInflow": None,
         "inflowAmount": None,
         "outflowAmount": None,
         "latestTs": macro.get("latestTs"),
+        "updatedAt": int(datetime.now().timestamp() * 1000),
     }
 
 
@@ -111,104 +79,52 @@ def fetch_concept_market_detail(concept_id: str) -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
         return None
+    snapshot = fetch_concept_realtime_snapshot(concept_id)
+    if snapshot is None:
+        return _build_detail_fallback(concept_id)
 
-    mapping = _concept_map(concept_id, concept["name"])
-    if _table_exists("sector_index"):
-        sql = """
-            SELECT
-                si.sector_key,
-                si.sector_name,
-                si.timestamps,
-                si.begin,
-                si.open,
-                si.close,
-                si.high,
-                si.low,
-                si.ycp,
-                si.vol,
-                si.amount,
-                si.change,
-                si.change_pct,
-                si.stock_count,
-                scf.inflow_amount,
-                scf.outflow_amount,
-                scf.net_inflow,
-                scf.inflow_ratio
-            FROM sector_index si
-            LEFT JOIN sector_capital_flow scf
-              ON si.sector_key = scf.sector_key
-             AND si.timestamps = scf.timestamps
-            WHERE si.sector_name = %s
-            ORDER BY si.timestamps DESC
-            LIMIT 1
-        """
-        try:
-            row = _query_one(sql, (mapping["sector_name"],))
-        except Exception:
-            row = None
-        if row:
-            stocks = fetch_concept_stocks(concept_id)
-            up_count = sum(1 for item in stocks if _safe_float(item.get("change")) > 0)
-            down_count = sum(1 for item in stocks if _safe_float(item.get("change")) < 0)
-            leader = max(stocks, key=lambda item: _safe_float(item.get("change"), -9999.0), default=None)
-            return {
-                "id": concept_id,
-                "name": row["sector_name"] or concept["name"],
-                "stockCount": int(row["stock_count"] or len(stocks)),
-                "upCount": up_count,
-                "downCount": down_count,
-                "avgChange": round(_safe_float(row["change_pct"]), 2),
-                "leaderStock": {
-                    "code": leader.get("code"),
-                    "name": leader.get("name"),
-                    "change": round(_safe_float(leader.get("change")), 2),
-                } if leader else None,
-                "open": round(_safe_float(row["open"]), 2),
-                "close": round(_safe_float(row["close"]), 2),
-                "high": round(_safe_float(row["high"]), 2),
-                "low": round(_safe_float(row["low"]), 2),
-                "preClose": round(_safe_float(row["ycp"]), 2),
-                "change": round(_safe_float(row["change"]), 2),
-                "changeRate": round(_safe_float(row["change_pct"]), 2),
-                "volume": _safe_float(row["vol"], 0.0),
-                "amount": _safe_float(row["amount"], 0.0),
-                "netInflow": _safe_float(row.get("net_inflow"), None),
-                "inflowAmount": _safe_float(row.get("inflow_amount"), None),
-                "outflowAmount": _safe_float(row.get("outflow_amount"), None),
-                "latestTs": int(row["timestamps"].timestamp() * 1000) if row.get("timestamps") else None,
-            }
-
-    return _build_detail_fallback(concept_id)
+    # Keep concept counters aligned with the same latest per-stock data used by the
+    # component list and downstream stock pages.
+    stocks = fetch_concept_stocks(concept_id)
+    up_count = sum(1 for item in stocks if _safe_float(item.get("change")) > 0)
+    down_count = sum(1 for item in stocks if _safe_float(item.get("change")) < 0)
+    leader = max(stocks, key=lambda item: _safe_float(item.get("change"), -9999.0), default=None)
+    active_changes = [_safe_float(item.get("change")) for item in stocks if item.get("ts")]
+    avg_change = round(sum(active_changes) / len(active_changes), 2) if active_changes else round(_safe_float(snapshot.get("change")), 2)
+    latest_stock_ts = max((item.get("ts") for item in stocks if item.get("ts")), default=None)
+    return {
+        "id": concept_id,
+        "name": snapshot.get("name") or concept["name"],
+        "stockCount": len(stocks) or int(snapshot.get("stockCount") or 0),
+        "upCount": up_count,
+        "downCount": down_count,
+        "avgChange": avg_change,
+        "leaderStock": {
+            "code": leader.get("code"),
+            "name": leader.get("name"),
+            "change": round(_safe_float(leader.get("change")), 2),
+        } if leader else None,
+        "open": round(_safe_float(snapshot.get("open")), 2),
+        "close": round(_safe_float(snapshot.get("close")), 2),
+        "high": round(_safe_float(snapshot.get("high")), 2),
+        "low": round(_safe_float(snapshot.get("low")), 2),
+        "preClose": round(_safe_float(snapshot.get("preClose")), 2),
+        "change": round(_safe_float(snapshot.get("changeAmount")), 2),
+        "changeRate": round(_safe_float(snapshot.get("change")), 2),
+        "volume": _safe_float(snapshot.get("volume"), 0.0),
+        "amount": _safe_float(snapshot.get("amount"), 0.0),
+        "netInflow": None,
+        "inflowAmount": None,
+        "outflowAmount": None,
+        "latestTs": latest_stock_ts or snapshot.get("latestTs"),
+        "updatedAt": snapshot.get("updatedAt") or int(datetime.now().timestamp() * 1000),
+    }
 
 
 def fetch_concept_capital_flow_history(concept_id: str) -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
         return None
-
-    mapping = _concept_map(concept_id, concept["name"])
-    if _table_exists("sector_capital_flow"):
-        sql = """
-            SELECT timestamps, inflow_amount, outflow_amount, net_inflow
-            FROM sector_capital_flow
-            WHERE sector_name = %s
-            ORDER BY timestamps DESC
-            LIMIT 60
-        """
-        try:
-            rows = _query_all(sql, (mapping["sector_name"],))
-        except Exception:
-            rows = []
-        if rows:
-            rows = list(reversed(rows[-10:]))
-            return {
-                "conceptId": concept_id,
-                "derived": False,
-                "times": [row["timestamps"].strftime("%H:%M") if row.get("timestamps") else "" for row in rows],
-                "inflow": [_safe_float(row.get("inflow_amount"), None) for row in rows],
-                "outflow": [_safe_float(row.get("outflow_amount"), None) for row in rows],
-                "netInflow": [_safe_float(row.get("net_inflow"), None) for row in rows],
-            }
 
     curve = fetch_concept_time_sharing(concept_id, limit=10)
     if not curve:
@@ -266,12 +182,74 @@ def _compress_rows(rows: list[dict], step: int) -> list[dict]:
     return grouped
 
 
+def _normalize_sector_index_rows(rows: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for row in rows or []:
+        ts = row.get("timestamps")
+        normalized.append(
+            {
+                "ts": int(ts.timestamp() * 1000) if ts else None,
+                "open": _safe_float(row.get("open"), 0.0),
+                "close": _safe_float(row.get("close"), 0.0),
+                "high": _safe_float(row.get("high"), 0.0),
+                "low": _safe_float(row.get("low"), 0.0),
+                "preClose": _safe_float(row.get("ycp"), 0.0),
+                "volume": _safe_float(row.get("vol"), 0.0),
+            }
+        )
+    return normalized
+
+
+def _clean_kline_rows(rows: list[dict]) -> list[dict]:
+    cleaned: list[dict] = []
+    prev_close: float | None = None
+
+    for row in rows or []:
+        open_price = _safe_float(row.get("open"), 0.0)
+        close_price = _safe_float(row.get("close"), 0.0)
+        high_price = _safe_float(row.get("high"), 0.0)
+        low_price = _safe_float(row.get("low"), 0.0)
+        pre_close = _safe_float(row.get("preClose"), 0.0)
+
+        if min(open_price, close_price, high_price, low_price) <= 0:
+            continue
+        if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
+            continue
+
+        reference = pre_close if pre_close > 0 else prev_close
+        if reference and reference > 0:
+            change_ratio = abs(close_price - reference) / reference
+            amplitude_ratio = abs(high_price - low_price) / reference
+            if change_ratio > 0.12 or amplitude_ratio > 0.15:
+                continue
+
+        cleaned.append(row)
+        prev_close = close_price
+
+    return cleaned
+
+
 def fetch_concept_kline(concept_id: str, period: str = "1m") -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
         return None
 
-    rows = fetch_concept_time_sharing(concept_id, limit=240)
+    snapshot = fetch_concept_realtime_snapshot(concept_id)
+    anchor_ts = snapshot.get("latestTs") if snapshot else None
+    sector_name = _concept_sector_name(concept_id, concept.get("name"))
+    sector_rows = _normalize_sector_index_rows(_fetch_sector_index_rows(sector_name, limit=240, anchor_ts=anchor_ts))
+    cleaned_sector_rows = _clean_kline_rows(sector_rows)
+
+    # 如果 sector_index 只清洗剩下极少几个点，说明这批板块索引数据异常或口径不连续，
+    # 改用成分股分钟聚合结果，避免前端只画出两三根蜡烛。
+    use_sector_rows = bool(cleaned_sector_rows) and (
+        len(cleaned_sector_rows) >= 20 or len(cleaned_sector_rows) >= max(3, len(sector_rows) // 3)
+    )
+
+    if use_sector_rows:
+        rows = cleaned_sector_rows
+    else:
+        rows = _clean_kline_rows(fetch_concept_time_sharing(concept_id, limit=240))
     if not rows:
         return {"period": period, "times": [], "data": [], "volumes": []}
 
@@ -291,4 +269,3 @@ def fetch_concept_kline(concept_id: str, period: str = "1m") -> dict | None:
         ],
         "volumes": [round(_safe_float(item.get("volume")), 2) for item in compressed],
     }
-

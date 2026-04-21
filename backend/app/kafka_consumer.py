@@ -237,6 +237,18 @@ async def run_stock_time_sharing_consumer(stop_event: asyncio.Event) -> None:
     logger.info("Kafka consumer started for topic %s", KAFKA_STOCK_TIME_SHARING_TOPIC)
     try:
         while not stop_event.is_set():
+            partitions = consumer.assignment()
+            if partitions:
+                await consumer.seek_to_end(*partitions)
+                logger.info(
+                    "Kafka consumer aligned to latest offsets for %s partitions on topic %s",
+                    len(partitions),
+                    KAFKA_STOCK_TIME_SHARING_TOPIC,
+                )
+                break
+            await asyncio.sleep(0.2)
+
+        while not stop_event.is_set():
             # 批量拉取消息，减少高频行情下的数据库提交开销。
             batch = await consumer.getmany(timeout_ms=1000, max_records=500)
             empty = True

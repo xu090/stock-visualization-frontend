@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 
 const emptyFilters = () => ({
   minChange: null,
-  minNetInflowY: null,
+  minChangeAmount: null,
+  maxChangeAmount: null,
   minAmountY: null,
   minVolRatio: null,
   minUpRatio: null,
@@ -22,6 +23,23 @@ export const useHomeFilterStore = defineStore('homeFilter', {
   }),
 
   actions: {
+    _normalizeSnapshot(snapshot) {
+      if (!snapshot) return snapshot
+      const selectedMetrics = Array.isArray(snapshot.selectedMetrics)
+        ? snapshot.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+        : []
+      const rawFilters = { ...(snapshot.filters || {}) }
+      if (rawFilters.minChangeAmount == null && rawFilters.minNetInflowY != null) rawFilters.minChangeAmount = rawFilters.minNetInflowY
+      if (rawFilters.maxChangeAmount == null && rawFilters.maxNetInflowY != null) rawFilters.maxChangeAmount = rawFilters.maxNetInflowY
+      delete rawFilters.minNetInflowY
+      delete rawFilters.maxNetInflowY
+      return {
+        ...snapshot,
+        selectedMetrics,
+        filters: rawFilters,
+      }
+    },
+
     reset() {
       this.scope = 'all'
       this.searchQuery = ''
@@ -40,13 +58,14 @@ export const useHomeFilterStore = defineStore('homeFilter', {
     },
 
     applySnapshot(snapshot) {
-      if (!snapshot) return
-      this.scope = snapshot.scope ?? this.scope
-      this.searchQuery = snapshot.searchQuery ?? ''
-      this.selectedMetrics = Array.isArray(snapshot.selectedMetrics)
-        ? snapshot.selectedMetrics.slice(0, 3)
+      const normalized = this._normalizeSnapshot(snapshot)
+      if (!normalized) return
+      this.scope = normalized.scope ?? this.scope
+      this.searchQuery = normalized.searchQuery ?? ''
+      this.selectedMetrics = Array.isArray(normalized.selectedMetrics)
+        ? normalized.selectedMetrics.slice(0, 3)
         : []
-      this.filters = { ...emptyFilters(), ...(snapshot.filters || {}) }
+      this.filters = { ...emptyFilters(), ...(normalized.filters || {}) }
     }
   }
 })

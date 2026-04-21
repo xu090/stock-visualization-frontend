@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from app.db import get_conn
@@ -50,13 +51,12 @@ def _normalize_stock_codes(codes: list[str] | None) -> list[str]:
 
 def _concept_sector_name(concept_id: str, concept_name: str | None = None) -> str:
     mapping = {
-        "semiconductor": "半导体",
-        "intelligent_driving": "智能驾驶",
-        "robot": "人形机器人",
-        "military": "国防军工",
+        "semiconductor": "\u534a\u5bfc\u4f53",
+        "intelligent_driving": "\u667a\u80fd\u9a7e\u9a76",
+        "robot": "\u4eba\u5f62\u673a\u5668\u4eba",
+        "military": "\u56fd\u9632\u519b\u5de5",
     }
     return mapping.get(str(concept_id or "").strip(), str(concept_name or "").strip())
-
 
 def _fetch_sector_snapshot_map() -> dict[str, dict]:
     sql = """
@@ -95,6 +95,48 @@ def _fetch_sector_snapshot_map() -> dict[str, dict]:
             continue
         result[name] = row
     return result
+
+
+def _fetch_sector_index_rows(sector_name: str, limit: int = 240, anchor_ts: int | None = None) -> list[dict]:
+    name = str(sector_name or "").strip()
+    if not name:
+        return []
+
+    anchor_dt = datetime.fromtimestamp(anchor_ts / 1000) if anchor_ts else datetime.now()
+    sql = """
+        SELECT
+            timestamps,
+            open,
+            close,
+            high,
+            low,
+            ycp,
+            vol,
+            amount,
+            stock_count,
+            change,
+            change_pct
+        FROM sector_index
+        WHERE sector_name = %s
+          AND timestamps::date = %s::date
+          AND timestamps <= %s
+        ORDER BY timestamps DESC
+        LIMIT %s
+    """
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('public.sector_index') AS regclass")
+                exists_row = cur.fetchone()
+                if not exists_row or not exists_row["regclass"]:
+                    return []
+                cur.execute(sql, (name, anchor_dt, anchor_dt, limit))
+                rows = cur.fetchall()
+    except Exception:
+        return []
+
+    rows.reverse()
+    return rows
 
 
 def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[dict]:
@@ -451,68 +493,135 @@ def delete_user_concept(concept_id: str) -> bool:
     return True
 
 
-def fetch_concept_stocks(concept_id: str) -> list[dict]:
-    # 每只成分股只取最新一条分钟数据，便于概念详情页展示。
-    sql = """
-        WITH latest_stock AS (
-            SELECT DISTINCT ON (stock_code)
-                stock_code,
-                ts,
-                open,
-                close,
-                high,
-                low,
-                previous_close,
-                vol,
-                amount,
-                tor,
-                udf,
-                udp,
-                udz
-            FROM stock_time_sharing
-            ORDER BY stock_code, ts DESC
-        )
-        SELECT
-            cs.stock_code,
-            s.name AS stock_name,
-            ls.ts,
-            ls.open,
-            ls.close,
-            ls.high,
-            ls.low,
-            ls.previous_close,
-            ls.vol,
-            ls.amount,
-            ls.tor,
-            ls.udf,
-            ls.udp,
-            ls.udz
-        FROM concept_stocks cs
-        LEFT JOIN stocks s ON s.code = cs.stock_code
-        LEFT JOIN latest_stock ls ON ls.stock_code = cs.stock_code
-        WHERE cs.concept_id = %s
-        ORDER BY cs.stock_code
-    """
+def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> list[dict]:
+    # ????????????????????????????
+    # ???????????????????????????????? 3 ? 1 ??
+    if snapshot_ts:
+        sql = """
+            WITH anchor AS (
+                SELECT to_timestamp(%s / 1000.0) AS anchor_ts
+            ),
+            latest_stock_before_anchor AS (
+                SELECT DISTINCT ON (cs.stock_code)
+                    cs.stock_code,
+                    st.ts,
+                    st.open,
+                    st.close,
+                    st.high,
+                    st.low,
+                    st.previous_close,
+                    st.vol,
+                    st.amount,
+                    st.tor,
+                    st.udf,
+                    st.udp,
+                    st.udz
+                FROM concept_stocks cs
+                JOIN anchor a ON TRUE
+                JOIN stock_time_sharing st
+                  ON st.stock_code = cs.stock_code
+                 AND st.ts <= a.anchor_ts
+                WHERE cs.concept_id = %s
+                ORDER BY cs.stock_code, st.ts DESC
+            )
+            SELECT
+                cs.stock_code,
+                s.name AS stock_name,
+                lsa.ts,
+                lsa.open,
+                lsa.close,
+                lsa.high,
+                lsa.low,
+                lsa.previous_close,
+                lsa.vol,
+                lsa.amount,
+                lsa.tor,
+                lsa.udf,
+                lsa.udp,
+                lsa.udz
+            FROM concept_stocks cs
+            LEFT JOIN stocks s ON s.code = cs.stock_code
+            LEFT JOIN latest_stock_before_anchor lsa ON lsa.stock_code = cs.stock_code
+            WHERE cs.concept_id = %s
+            ORDER BY cs.stock_code
+        """
+        params = (snapshot_ts, concept_id, concept_id)
+    else:
+        sql = """
+            WITH latest_stock_before_anchor AS (
+                SELECT DISTINCT ON (cs.stock_code)
+                    cs.stock_code,
+                    st.ts,
+                    st.open,
+                    st.close,
+                    st.high,
+                    st.low,
+                    st.previous_close,
+                    st.vol,
+                    st.amount,
+                    st.tor,
+                    st.udf,
+                    st.udp,
+                    st.udz
+                FROM concept_stocks cs
+                JOIN stock_time_sharing st
+                  ON st.stock_code = cs.stock_code
+                 AND st.ts <= NOW()
+                WHERE cs.concept_id = %s
+                ORDER BY cs.stock_code, st.ts DESC
+            )
+            SELECT
+                cs.stock_code,
+                s.name AS stock_name,
+                lsa.ts,
+                lsa.open,
+                lsa.close,
+                lsa.high,
+                lsa.low,
+                lsa.previous_close,
+                lsa.vol,
+                lsa.amount,
+                lsa.tor,
+                lsa.udf,
+                lsa.udp,
+                lsa.udz
+            FROM concept_stocks cs
+            LEFT JOIN stocks s ON s.code = cs.stock_code
+            LEFT JOIN latest_stock_before_anchor lsa ON lsa.stock_code = cs.stock_code
+            WHERE cs.concept_id = %s
+            ORDER BY cs.stock_code
+        """
+        params = (concept_id, concept_id)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (concept_id,))
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
     result = []
     for row in rows:
+        close = _safe_num(row["close"], 0.0)
+        pre_close = _safe_num(row["previous_close"], 0.0)
+        if close > 0 and pre_close > 0:
+            change_amount = round(close - pre_close, 2)
+            change_percent = round((change_amount / pre_close) * 100, 2)
+        else:
+            change_percent = _safe_num(row["udf"], 0.0)
+            change_amount = _safe_num(row["udp"], 0.0)
+
         result.append(
             {
                 "code": row["stock_code"],
                 "name": row["stock_name"] or row["stock_code"],
-                "price": _safe_num(row["close"], 0.0),
+                "price": close,
                 "open": _safe_num(row["open"], 0.0),
-                "close": _safe_num(row["close"], 0.0),
+                "close": close,
                 "high": _safe_num(row["high"], 0.0),
                 "low": _safe_num(row["low"], 0.0),
-                "preClose": _safe_num(row["previous_close"], 0.0),
-                "changePercent": _safe_num(row["udf"], 0.0),
-                "change": _safe_num(row["udf"], 0.0),
-                "changeAmount": _safe_num(row["udp"], 0.0),
+                "preClose": pre_close,
+                "changePercent": change_percent,
+                "change": change_percent,
+                "changeAmount": change_amount,
                 "amount": _safe_num(row["amount"], 0.0),
                 "volume": row["vol"] or 0,
                 "turnover": _safe_num(row["tor"], 0.0),
@@ -525,11 +634,17 @@ def fetch_concept_stocks(concept_id: str) -> list[dict]:
         )
     return result
 
-
 def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
-    # 用等权方式按分钟聚合概念曲线，适合前端做概念分时展示。
+    # ????????????????????????????????? K ????
     sql = """
-        WITH concept_rows AS (
+        WITH latest_trade_day AS (
+            SELECT MAX(st.ts::date) AS trade_day
+            FROM stock_time_sharing st
+            JOIN concept_stocks cs ON cs.stock_code = st.stock_code
+            WHERE cs.concept_id = %s
+              AND st.ts <= NOW()
+        ),
+        concept_rows AS (
             SELECT
                 st.ts,
                 st.market_code,
@@ -545,6 +660,8 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
             FROM stock_time_sharing st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
+              AND st.ts::date = (SELECT trade_day FROM latest_trade_day)
+              AND st.ts <= NOW()
         ),
         aggregated AS (
             SELECT
@@ -571,7 +688,7 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (concept_id, limit))
+            cur.execute(sql, (concept_id, concept_id, limit))
             rows = cur.fetchall()
 
     return [
@@ -591,7 +708,6 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
         }
         for row in rows
     ]
-
 
 def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
     concept = fetch_concept_profile(concept_id)

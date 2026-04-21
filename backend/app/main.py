@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import List
 
 from fastapi import FastAPI, HTTPException
@@ -12,12 +13,14 @@ from app.concept_market_service import (
     fetch_concept_kline,
     fetch_concept_market_detail,
 )
+from app.concept_realtime_service import (
+    fetch_concept_macro,
+    fetch_concept_overview,
+)
 from app.concept_service import (
     create_user_concept,
     delete_user_concept,
     fetch_concept_detail,
-    fetch_concept_macro,
-    fetch_concept_overview,
     fetch_concept_profile,
     fetch_concept_stocks,
     fetch_concept_time_sharing,
@@ -47,6 +50,7 @@ from app.strategy_service import (
 
 class QuoteRequest(BaseModel):
     codes: List[str]
+    snapshotTs: int | None = None
 
 
 class SelectStrategyPayload(BaseModel):
@@ -100,17 +104,25 @@ def normalize_code(raw: str | None) -> str:
 
 def map_quote_row(row: dict) -> dict:
     # 把数据库字段转换成前端当前 store 能直接使用的结构。
+    close = float(row["close"] or 0)
+    pre_close = float(row["previous_close"] or 0)
+    if close > 0 and pre_close > 0:
+        change_amount = round(close - pre_close, 2)
+        change_percent = round((change_amount / pre_close) * 100, 2)
+    else:
+        change_percent = float(row["udf"] or 0)
+        change_amount = float(row["udp"] or 0)
     return {
         "code": row["stock_code"],
-        "price": row["close"],
-        "close": row["close"],
-        "preClose": row["previous_close"],
+        "price": close,
+        "close": close,
+        "preClose": pre_close,
         "open": row["open"],
         "high": row["high"],
         "low": row["low"],
-        "changePercent": row["udf"],
-        "change": row["udf"],
-        "changeAmount": row["udp"],
+        "changePercent": change_percent,
+        "change": change_percent,
+        "changeAmount": change_amount,
         "amount": row["amount"],
         "volume": row["vol"],
         "turnover": row["tor"],
@@ -123,42 +135,69 @@ def map_quote_row(row: dict) -> dict:
         "pb": None,
         "mktCap": None,
         "score": None,
-        "limitUp": bool((row["udf"] or 0) >= 9.8),
-        "limitDown": bool((row["udf"] or 0) <= -9.8),
+        "limitUp": bool(change_percent >= 9.8),
+        "limitDown": bool(change_percent <= -9.8),
         "ts": int(row["ts"].timestamp() * 1000) if row["ts"] else None,
     }
 
 
-def fetch_quotes_by_codes(codes: list[str]) -> list[dict]:
+def fetch_quotes_by_codes(codes: list[str], snapshot_ts: int | None = None) -> list[dict]:
     # 每只股票只取最新一条分钟数据，作为当前行情摘要返回给前端。
     normalized = [normalize_code(code) for code in codes]
     normalized = [code for code in normalized if code]
     if not normalized:
         return []
 
-    sql = """
-        SELECT DISTINCT ON (stock_code)
-            stock_code,
-            ts,
-            open,
-            close,
-            high,
-            low,
-            previous_close,
-            vol,
-            amount,
-            tor,
-            ftor,
-            udp,
-            udf,
-            udz
-        FROM stock_time_sharing
-        WHERE stock_code = ANY(%s)
-        ORDER BY stock_code, ts DESC
-    """
+    params: tuple = (normalized,)
+    if snapshot_ts:
+        snapshot_dt = datetime.fromtimestamp(snapshot_ts / 1000)
+        sql = """
+            SELECT DISTINCT ON (stock_code)
+                stock_code,
+                ts,
+                open,
+                close,
+                high,
+                low,
+                previous_close,
+                vol,
+                amount,
+                tor,
+                ftor,
+                udp,
+                udf,
+                udz
+            FROM stock_time_sharing
+            WHERE stock_code = ANY(%s)
+              AND ts <= %s
+            ORDER BY stock_code, ts DESC
+        """
+        params = (normalized, snapshot_dt)
+    else:
+        sql = """
+            SELECT DISTINCT ON (stock_code)
+                stock_code,
+                ts,
+                open,
+                close,
+                high,
+                low,
+                previous_close,
+                vol,
+                amount,
+                tor,
+                ftor,
+                udp,
+                udf,
+                udz
+            FROM stock_time_sharing
+            WHERE stock_code = ANY(%s)
+              AND ts <= NOW()
+            ORDER BY stock_code, ts DESC
+        """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (normalized,))
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
     by_code = {row["stock_code"]: map_quote_row(row) for row in rows}
@@ -183,6 +222,7 @@ def fetch_time_sharing(code: str, limit: int = 120) -> list[dict]:
             udz
         FROM stock_time_sharing
         WHERE stock_code = %s
+          AND ts <= NOW()
         ORDER BY ts DESC
         LIMIT %s
     """
@@ -256,7 +296,7 @@ def health() -> dict:
 
 @app.post("/api/quotes")
 def get_quotes(payload: QuoteRequest) -> dict:
-    rows = fetch_quotes_by_codes(payload.codes)
+    rows = fetch_quotes_by_codes(payload.codes, snapshot_ts=payload.snapshotTs)
     return {"data": rows}
 
 

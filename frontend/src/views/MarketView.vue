@@ -35,6 +35,10 @@
                 <span class="ov-v down">{{ downCount }}</span>
               </div>
               <div class="ov-item">
+                <span class="ov-k">更新时间</span>
+                <span class="ov-v">{{ quoteUpdatedText }}</span>
+              </div>
+              <div class="ov-item">
                 <span class="ov-k">平均涨跌</span>
                 <span class="ov-v" :class="{ up: avgChg > 0, down: avgChg < 0 }">
                   <span v-if="avgChg > 0" class="arrow">↑</span>
@@ -46,7 +50,7 @@
                 <span class="ov-k">领涨</span>
                 <span class="ov-v leader">
                   {{ leaderStock.name }}
-                  <span class="leader-chg up">↑ {{ formatPct(leaderStock.change) }}</span>
+                  <span class="leader-chg up">↑{{ formatPct(leaderStock.change) }}</span>
                 </span>
               </div>
             </div>
@@ -77,7 +81,7 @@
           <div class="panel-card">
             <div class="panel-header">
               <div class="panel-title">K 线走势</div>
-              <el-select v-model="klinePeriod" size="small" style="width:120px">
+              <el-select v-model="klinePeriod" size="small" style="width: 120px">
                 <el-option label="1 分钟" value="1m" />
                 <el-option label="5 分钟" value="5m" />
                 <el-option label="15 分钟" value="15m" />
@@ -86,101 +90,25 @@
             <div ref="klineChartRef" class="chart chart-kline"></div>
           </div>
         </div>
-
-
+        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" v-model:analysisWindow="analysisWindow" />
         <ConceptStockMergedTable
           :concept="concept"
           :stocks="stocks"
           :analysis-window="analysisWindow"
         />
-
-        <div class="panel-card table-panel">
-          <div class="panel-title">成分股列表</div>
-
-          <el-table
-            :data="sortedStocks"
-            stripe
-            class="stock-table"
-            @row-click="goStock"
-            highlight-current-row
-            @sort-change="onSortChange"
-            :default-sort="defaultSort"
-          >
-            <el-table-column prop="code" label="代码" />
-            <el-table-column prop="name" label="名称" />
-            <el-table-column label="收藏" width="80" align="center">
-              <template #default="{ row }">
-                <el-tooltip :content="isStockFavorite(row.code) ? '取消收藏' : '加入收藏'" placement="top">
-                  <el-icon
-                    :class="isStockFavorite(row.code) ? 'fav-icon on' : 'fav-icon'"
-                    @click.stop="toggleStockFav(row.code)"
-                  >
-                    <StarFilled v-if="isStockFavorite(row.code)" />
-                    <Star v-else />
-                  </el-icon>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-            <el-table-column prop="price" label="最新" width="90" sortable="custom">
-              <template #default="{ row }">
-                {{ formatNum(row.price, 2) }}
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="change" label="涨跌幅" width="130" sortable="custom">
-              <template #default="{ row }">
-                <span class="chg" :class="{ up: row.change > 0, down: row.change < 0 }">
-                  <span class="arrow" v-if="row.change > 0">↑</span>
-                  <span class="arrow" v-else-if="row.change < 0">↓</span>
-                  <span class="num">{{ formatPct(row.change) }}</span>
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="amount" label="成交额" width="120" sortable="custom">
-              <template #default="{ row }">{{ formatMoney(row.amount) }}</template>
-            </el-table-column>
-
-            <el-table-column prop="turnover" label="换手" width="120" sortable="custom">
-              <template #default="{ row }">{{ formatPct(row.turnover) }}</template>
-            </el-table-column>
-
-            <el-table-column prop="mktCap" label="市值" width="120" sortable="custom">
-              <template #default="{ row }">{{ formatMoney(row.mktCap) }}</template>
-            </el-table-column>
-
-            <el-table-column prop="pe" label="PE" width="90" sortable="custom">
-              <template #default="{ row }">{{ formatNum(row.pe, 1) }}</template>
-            </el-table-column>
-
-            <el-table-column prop="pb" label="PB" width="90" sortable="custom">
-              <template #default="{ row }">{{ formatNum(row.pb, 2) }}</template>
-            </el-table-column>
-
-            <el-table-column label="操作" width="120" align="center" fixed="right">
-              <template #default>
-                <el-button text type="primary" size="small">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <div class="table-tip">
-            提示：点击任意一行进入股票详情页，用于后续做个股看板和策略对比。
-          </div>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+/* global defineProps */
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
-import { buildConceptAnalysisPayload } from '@/utils/conceptAnalysis'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useConceptDetailStore } from '@/stores/conceptDetail'
@@ -191,7 +119,6 @@ const props = defineProps({
 })
 
 const route = useRoute()
-const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
 const conceptDetailStore = useConceptDetailStore()
@@ -211,6 +138,7 @@ const title = computed(() => concept.value?.name || curId.value || '概念')
 const detail = computed(() => conceptDetailStore.detailById[curId.value] || null)
 const capitalFlow = computed(() => conceptDetailStore.capitalFlowById[curId.value] || null)
 const kline = computed(() => conceptDetailStore.klineByKey[`${curId.value}:${klinePeriod.value}`] || null)
+const detailStocks = computed(() => conceptDetailStore.stocksById[curId.value] || [])
 
 const stockCodesNormalized = computed(() => {
   const raw = concept.value?.stockCodes || []
@@ -220,81 +148,51 @@ const stockCodesNormalized = computed(() => {
     .filter(Boolean)
 })
 
-const stocksFromApi = computed(() => conceptDetailStore.stocksById[curId.value] || [])
 const stocks = computed(() => {
-  if (stocksFromApi.value.length) return stocksFromApi.value
-
   const codes = stockCodesNormalized.value
   const cname = concept.value?.name || ''
-  const list = stockStore.getStocksByCodesEnriched?.(codes, cname) || []
-  const exists = new Set(list.map(item => normalizeCode(item.code)))
-  const extra = codes
-    .filter(code => !exists.has(code))
-    .map(code => ({
-      code,
-      name: code,
-      price: null,
-      change: null,
-      amount: null,
-      turnover: null,
-      netInflow: null,
-      mainInflow: null,
-      mktCap: null,
-      pe: null,
-      pb: null,
-    }))
+  const detailMap = new Map(
+    detailStocks.value
+      .filter(item => item?.code)
+      .map(item => [normalizeCode(item.code), item])
+  )
 
-  return [...list, ...extra]
+  return codes.map(code => {
+    const detailRow = detailMap.get(code) || {}
+    const quoteRow = stockStore.getStockByCodeEnriched?.(code, cname) || {}
+    const merged = {
+      ...detailRow,
+      ...quoteRow,
+      code,
+      name: detailRow.name || quoteRow.name || code,
+      concept: detailRow.concept || quoteRow.concept || cname,
+      marketCode: detailRow.marketCode || quoteRow.marketCode || '',
+      mktCap: detailRow.mktCap ?? quoteRow.mktCap ?? null,
+      pe: detailRow.pe ?? quoteRow.pe ?? null,
+      pb: detailRow.pb ?? quoteRow.pb ?? null,
+      netInflow: detailRow.netInflow ?? quoteRow.netInflow ?? null,
+      mainInflow: detailRow.mainInflow ?? quoteRow.mainInflow ?? null,
+    }
+
+    return merged
+  })
 })
+
+const quoteUpdatedTs = computed(() => {
+  const detailTs = Number(detail.value?.latestTs)
+  if (Number.isFinite(detailTs) && detailTs > 0) return detailTs
+  const conceptTs = Number(concept.value?.latestTs)
+  if (Number.isFinite(conceptTs) && conceptTs > 0) return conceptTs
+  const stockTs = stocks.value
+    .map(item => Number(item.updatedAt || item.ts))
+    .filter(Number.isFinite)
+  if (!stockTs.length) return null
+  return Math.max(...stockTs)
+})
+
+const quoteUpdatedText = computed(() => formatDateTime(quoteUpdatedTs.value))
 
 const analysisWindow = ref(30)
-const query = reactive({
-  keyword: '',
-  correlation: '',
-  direction: '',
-  maPattern: '',
-})
-
-const analysisPayload = computed(() => buildConceptAnalysisPayload(concept.value, stocks.value, { days: analysisWindow.value }))
-const filteredAnalysisStocks = computed(() => {
-  const keyword = query.keyword.trim().toLowerCase()
-  return analysisPayload.value.stocks.filter(item => {
-    if (keyword) {
-      const text = `${item.name || ''} ${item.code || ''}`.toLowerCase()
-      if (!text.includes(keyword)) return false
-    }
-    if (query.correlation && item.correlationCategory !== query.correlation) return false
-    if (query.direction && item.trendDirection !== query.direction) return false
-    if (query.maPattern && item.maPatternKey !== query.maPattern) return false
-    return true
-  })
-})
-
-const sortState = ref({ prop: 'change', order: 'descending' })
-const defaultSort = computed(() => ({ prop: sortState.value.prop, order: sortState.value.order }))
-
-function toNum(value) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : Number.NEGATIVE_INFINITY
-}
-
-const sortedStocks = computed(() => {
-  const list = (filteredAnalysisStocks.value || []).slice()
-  const { prop, order } = sortState.value
-  if (!prop || !order) return list
-  const direction = order === 'ascending' ? 1 : -1
-  list.sort((a, b) => {
-    const av = toNum(a?.[prop])
-    const bv = toNum(b?.[prop])
-    if (av === bv) return 0
-    return (av > bv ? 1 : -1) * direction
-  })
-  return list
-})
-
-function onSortChange({ prop, order }) {
-  sortState.value = { prop, order }
-}
 
 const isFav = computed(() => conceptStore.isConceptFavorite?.(curId.value) ?? false)
 async function toggleFav() {
@@ -306,21 +204,6 @@ async function toggleFav() {
   }
   if (isFav.value) await conceptStore.removeConceptFromMyConcept?.(curId.value)
   else await conceptStore.addConceptToMyConcept?.(current)
-}
-
-const isStockFavorite = code => stockStore.isStockFavorite(code)
-const toggleStockFav = code => {
-  if (isStockFavorite(code)) stockStore.removeStockFromMyStocks(code)
-  else stockStore.addStockToMyStocks(code)
-}
-
-function goStock(row) {
-  const code = normalizeCode(row?.code)
-  if (!code) return
-  router.push({
-    path: `/stock/${code}`,
-    query: concept.value?.name ? { sector: concept.value.name } : {},
-  })
 }
 
 function formatNum(value, digits = 2) {
@@ -345,27 +228,42 @@ function formatMoney(value) {
   return `${sign}${abs.toFixed(0)}`
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateTime(ts) {
+  const value = Number(ts)
+  if (!Number.isFinite(value) || value <= 0) return '--'
+  const date = new Date(value)
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
+}
+
 const stocksCount = computed(() => {
   if (stocks.value.length) return stocks.value.length
+  if (detail.value?.stockCount != null) return detail.value.stockCount
   return detail.value?.stockCount ?? 0
 })
 const upCount = computed(() => {
   if (stocks.value.length) return stocks.value.filter(item => Number(item.change) > 0).length
+  if (detail.value?.upCount != null) return detail.value.upCount
   return detail.value?.upCount ?? 0
 })
 const downCount = computed(() => {
   if (stocks.value.length) return stocks.value.filter(item => Number(item.change) < 0).length
+  if (detail.value?.downCount != null) return detail.value.downCount
   return detail.value?.downCount ?? 0
 })
 const avgChg = computed(() => {
   const list = (stocks.value || []).map(item => Number(item.change)).filter(Number.isFinite)
+  if (Number.isFinite(Number(detail.value?.avgChange))) return Number(detail.value.avgChange)
   if (!list.length) return 0
   return list.reduce((sum, item) => sum + item, 0) / list.length
 })
 const leaderStock = computed(() => {
   const list = (stocks.value || []).filter(item => Number.isFinite(Number(item.change)))
-  if (!list.length) return detail.value?.leaderStock || null
-  return [...list].sort((a, b) => Number(b.change) - Number(a.change))[0]
+  if (list.length) return [...list].sort((a, b) => Number(b.change) - Number(a.change))[0]
+  return detail.value?.leaderStock || null
 })
 
 const board = computed(() => ({
@@ -415,6 +313,7 @@ const fundChartRef = ref(null)
 const klineChartRef = ref(null)
 let fundChart = null
 let klineChart = null
+let quotePollingTimer = null
 
 function initFundChart() {
   if (!fundChartRef.value) return
@@ -479,10 +378,39 @@ function resizeCharts() {
   klineChart?.resize()
 }
 
+function stopQuotePolling() {
+  if (quotePollingTimer) {
+    clearInterval(quotePollingTimer)
+    quotePollingTimer = null
+  }
+}
+
+async function refreshMinuteSnapshot() {
+  const codes = stockCodesNormalized.value
+  if (!curId.value || !codes.length) return
+  const latestDetail = await conceptDetailStore.fetchDetail(curId.value)
+  await stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null })
+}
+
+function restartQuotePolling() {
+  stopQuotePolling()
+  quotePollingTimer = setInterval(() => {
+    refreshMinuteSnapshot().catch(() => null)
+  }, 5000)
+}
+
 async function loadPageData() {
   if (!curId.value) return
+  const codes = stockCodesNormalized.value
   await nextTick()
-  await conceptDetailStore.fetchAllForMarketView(curId.value, klinePeriod.value)
+  const latestDetail = await conceptDetailStore.fetchDetail(curId.value)
+  await Promise.all([
+    conceptDetailStore.fetchCapitalFlow(curId.value),
+    conceptDetailStore.fetchKline(curId.value, klinePeriod.value),
+    conceptDetailStore.fetchStocks(curId.value),
+    codes.length ? stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null }) : Promise.resolve(),
+  ])
+  restartQuotePolling()
   initFundChart()
   initKlineChart()
   resizeCharts()
@@ -516,6 +444,7 @@ watch(kline, () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts)
+  stopQuotePolling()
   fundChart?.dispose()
   klineChart?.dispose()
 })
@@ -721,18 +650,6 @@ onBeforeUnmount(() => {
   color:#909399;
 }
 
-.table-panel{
-  margin-top:24px;
-}
-
-.stock-table :deep(.el-table__row){
-  cursor:pointer;
-}
-
-.stock-table :deep(.el-table__row:hover td){
-  background:#f5f8ff !important;
-}
-
 .chg{
   display:inline-flex;
   align-items:center;
@@ -751,16 +668,6 @@ onBeforeUnmount(() => {
 
 .down{
   color:#67c23a;
-}
-
-.table-panel .el-table-column{
-  max-width:120px;
-}
-
-.table-tip{
-  margin-top:10px;
-  font-size:12px;
-  color:#909399;
 }
 
 @media (max-width: 1100px){

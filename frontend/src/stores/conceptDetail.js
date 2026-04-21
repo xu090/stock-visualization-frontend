@@ -37,6 +37,7 @@ function normalizeDetail(item = {}) {
     outflowAmount: asNum(item.outflowAmount, null),
     netInflow: asNum(item.netInflow, null),
     latestTs: item.latestTs || null,
+    updatedAt: item.updatedAt || null,
   }
 }
 

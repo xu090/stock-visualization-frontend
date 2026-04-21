@@ -95,7 +95,8 @@ export default {
       try {
         await Promise.allSettled([
           conceptStore.ensureLoaded(true),
-          strategyStore.ensureLoaded()
+          strategyStore.ensureLoaded(),
+          stockStore.loadStockBaseList()
         ])
 
         const firstConcept = conceptStore.conceptList?.[0]

@@ -27,10 +27,10 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["change", "netInflow", "amount"],
+            "selectedMetrics": ["change", "changeAmount", "amount"],
             "filters": {
                 "minChange": 2,
-                "minNetInflowY": 0.1,
+                "minChangeAmount": 0.1,
                 "minAmountY": 10,
                 "minVolRatio": 1.2,
                 "minUpRatio": 0.55,
@@ -40,16 +40,16 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
     SelectStrategySeed(
         id=1002,
         name="资金优先",
-        description="以净流入为核心，兼顾成交额",
+        description="以涨跌额为核心，兼顾成交额",
         is_favorite=True,
         enabled=True,
         is_custom=False,
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["netInflow", "amount"],
+            "selectedMetrics": ["changeAmount", "amount"],
             "filters": {
-                "minNetInflowY": 3,
+                "minChangeAmount": 0.3,
                 "minAmountY": 15,
                 "minUpRatio": 0.5,
             },

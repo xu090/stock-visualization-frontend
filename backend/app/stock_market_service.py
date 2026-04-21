@@ -40,6 +40,12 @@ def _query_all(sql: str, params: tuple[Any, ...]) -> list[dict]:
 
 def _fetch_time_sharing(code: str, limit: int = 240) -> list[dict]:
     sql = """
+        WITH latest_trade_day AS (
+            SELECT MAX(ts::date) AS trade_day
+            FROM stock_time_sharing
+            WHERE stock_code = %s
+              AND ts <= NOW()
+        )
         SELECT
             stock_code,
             market_code,
@@ -55,10 +61,12 @@ def _fetch_time_sharing(code: str, limit: int = 240) -> list[dict]:
             udz
         FROM stock_time_sharing
         WHERE stock_code = %s
+          AND ts::date = (SELECT trade_day FROM latest_trade_day)
+          AND ts <= NOW()
         ORDER BY ts DESC
         LIMIT %s
     """
-    rows = _query_all(sql, (code, limit))
+    rows = _query_all(sql, (code, code, limit))
     rows.reverse()
     return [
         {

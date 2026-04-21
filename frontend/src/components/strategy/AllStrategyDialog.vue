@@ -158,7 +158,7 @@ const dialogVisible = computed({
 
 const metricDefs = [
   { key: 'change', label: '涨跌幅' },
-  { key: 'netInflow', label: '净流入' },
+  { key: 'changeAmount', label: '涨跌额' },
   { key: 'amount', label: '成交额' },
   { key: 'volRatio', label: '量比' },
   { key: 'upRatio', label: '上涨占比' },
@@ -168,15 +168,31 @@ const metricDefs = [
 
 const metricLabel = key => metricDefs.find(x => x.key === key)?.label || key
 
+const normalizeStrategySnapshot = snap => {
+  const base = snap || {}
+  const filters = { ...(base.filters || {}) }
+  if (filters.minChangeAmount == null && filters.minNetInflowY != null) filters.minChangeAmount = filters.minNetInflowY
+  if (filters.maxChangeAmount == null && filters.maxNetInflowY != null) filters.maxChangeAmount = filters.maxNetInflowY
+  delete filters.minNetInflowY
+  delete filters.maxNetInflowY
+  return {
+    ...base,
+    selectedMetrics: Array.isArray(base.selectedMetrics)
+      ? base.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+      : [],
+    filters,
+  }
+}
+
 const metricsTextFull = snap => {
-  const keys = (snap?.selectedMetrics || []).filter(Boolean).slice(0, 3)
+  const keys = (normalizeStrategySnapshot(snap)?.selectedMetrics || []).filter(Boolean).slice(0, 3)
   if (!keys.length) return '无'
   if (keys.length === 1) return `排序：${metricLabel(keys[0])}`
   return `排序：${keys.map(metricLabel).join('、')}`
 }
 
 const filtersTextFull = snap => {
-  const f = snap?.filters || {}
+  const f = normalizeStrategySnapshot(snap)?.filters || {}
   const parts = []
   const range = (min, max, unit = '') => {
     const hasMin = min != null
@@ -187,7 +203,7 @@ const filtersTextFull = snap => {
     return `<=${max}${unit}`
   }
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
-  const b = range(f.minNetInflowY, f.maxNetInflowY, '亿'); if (b) parts.push(`净流入${b}`)
+  const b = range(f.minChangeAmount, f.maxChangeAmount, ''); if (b) parts.push(`涨跌额${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
   const d = range(f.minVolRatio, f.maxVolRatio, ''); if (d) parts.push(`量比${d}`)
   const e = range(
@@ -238,8 +254,8 @@ defineExpose({ focusStrategyCard })
 const emptySelectFilters = () => ({
   minChange: null,
   maxChange: null,
-  minNetInflowY: null,
-  maxNetInflowY: null,
+  minChangeAmount: null,
+  maxChangeAmount: null,
   minAmountY: null,
   maxAmountY: null,
   minVolRatio: null,
