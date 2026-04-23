@@ -139,6 +139,7 @@ function buildCommonOption(title, series) {
       name: s.name,
       type: 'line',
       smooth: true,
+      connectNulls: true,
       showSymbol: false,
       emphasis: { focus: 'series' },
       lineStyle: { width: 2 },
@@ -173,6 +174,9 @@ function onResize() {
 }
 
 onMounted(async () => {
+  if (!macroStore.loaded && !macroStore.loading) {
+    await macroStore.fetchMacroData().catch(() => null)
+  }
   macroStore.ensureSelectedCategory()
   await nextTick()
   renderCategoryChart()

@@ -264,8 +264,37 @@ def _compress_rows(rows: list[dict], step: int) -> list[dict]:
     return grouped
 
 
+def _clean_kline_rows(rows: list[dict]) -> list[dict]:
+    cleaned: list[dict] = []
+    prev_close: float | None = None
+
+    for row in rows or []:
+        open_price = _safe_float(row.get("open"), 0.0) or 0.0
+        close_price = _safe_float(row.get("close"), 0.0) or 0.0
+        high_price = _safe_float(row.get("high"), 0.0) or 0.0
+        low_price = _safe_float(row.get("low"), 0.0) or 0.0
+        pre_close = _safe_float(row.get("preClose"), 0.0) or 0.0
+
+        if min(open_price, close_price, high_price, low_price) <= 0:
+            continue
+        if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
+            continue
+
+        reference = pre_close if pre_close > 0 else prev_close
+        if reference and reference > 0:
+            change_ratio = abs(close_price - reference) / reference
+            amplitude_ratio = abs(high_price - low_price) / reference
+            if change_ratio > 0.12 or amplitude_ratio > 0.15:
+                continue
+
+        cleaned.append(row)
+        prev_close = close_price
+
+    return cleaned
+
+
 def fetch_stock_kline(code: str, period: str = "1m") -> dict:
-    rows = _fetch_time_sharing(code, limit=240)
+    rows = _clean_kline_rows(_fetch_time_sharing(code, limit=240))
     if not rows:
         return {"period": period, "times": [], "data": [], "volumes": []}
 

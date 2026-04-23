@@ -225,13 +225,13 @@ export const useConceptStore = defineStore('concept', {
       return this.upsertConcept(row)
     },
 
-    async fetchConceptMacro(id) {
-      return apiGet(`/api/concepts/${encodeURIComponent(id)}/macro`)
+    async fetchConceptMacro(id, limit = 240) {
+      return apiGet(`/api/concepts/${encodeURIComponent(id)}/macro?limit=${encodeURIComponent(limit)}`)
     },
 
-    async refreshConceptMacros(ids = []) {
+    async refreshConceptMacros(ids = [], limit = 240) {
       const targets = ids.length ? ids : this.conceptList.map(c => c.id)
-      return Promise.allSettled(targets.map(id => this.fetchConceptMacro(id)))
+      return Promise.allSettled(targets.map(id => this.fetchConceptMacro(id, limit)))
     },
 
     syncMarketDetail(detail) {
