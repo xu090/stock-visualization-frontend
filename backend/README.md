@@ -15,28 +15,12 @@ Then edit `backend\.env` and fill in:
 
 - `POSTGRES_DSN`
 - `STOCK_NAME_MAPPING_FILE`
-- `KAFKA_BOOTSTRAP_SERVERS`
-- `KAFKA_STOCK_TIME_SHARING_TOPIC`
-- `KAFKA_EVENT_TOPIC`
-- `KAFKA_AUTO_OFFSET_RESET`
 - `AUTO_BOOTSTRAP_CONCEPTS`
-
-For first-time backfill into an empty table, set:
-
-```env
-KAFKA_AUTO_OFFSET_RESET=earliest
-```
-
-After the first successful load, you can switch it back to:
-
-```env
-KAFKA_AUTO_OFFSET_RESET=latest
-```
 
 ## Real-time flow
 
-The backend now consumes Kafka topic `stock-time-sharing-topic` and writes minute-level quotes into PostgreSQL table `stock_time_sharing`.
-It also consumes Kafka topic `event` and writes news items into PostgreSQL table `news_events`.
+The backend reads market data directly from PostgreSQL table `stock_time_sharing`.
+News data is read directly from PostgreSQL table `news_events`.
 
 When `AUTO_BOOTSTRAP_CONCEPTS=true`, the backend will also initialize the built-in concept definitions into:
 
@@ -83,7 +67,7 @@ Expected response:
 {
   "ok": true,
   "postgres": "connected",
-  "consumerEnabled": true
+  "consumerEnabled": false
 }
 ```
 
@@ -168,9 +152,9 @@ SELECT COUNT(*) FROM stock_time_sharing;
 ```
 
 ```sql
-SELECT stock_code, market_code, ts, close, vol, amount
+SELECT code, market_code, timestamps, close, vol, amount
 FROM stock_time_sharing
-ORDER BY ts DESC
+ORDER BY timestamps DESC
 LIMIT 20;
 ```
 

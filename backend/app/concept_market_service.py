@@ -126,38 +126,13 @@ def fetch_concept_capital_flow_history(concept_id: str) -> dict | None:
     if concept is None:
         return None
 
-    curve = fetch_concept_time_sharing(concept_id, limit=10)
-    if not curve:
-        return {
-            "conceptId": concept_id,
-            "derived": True,
-            "times": [],
-            "inflow": [],
-            "outflow": [],
-            "netInflow": [],
-        }
-
-    inflow: list[float] = []
-    outflow: list[float] = []
-    net_inflow: list[float] = []
-    times: list[str] = []
-    for item in curve:
-        ts = item.get("ts")
-        amount = _safe_float(item.get("amount"), 0.0)
-        change_pct = _safe_float(item.get("changePercent"), 0.0)
-        net = round(amount * (change_pct / 100.0), 2)
-        inflow.append(round(amount + max(net, 0.0), 2))
-        outflow.append(round(max(amount - net, 0.0), 2))
-        net_inflow.append(net)
-        times.append(datetime.fromtimestamp(ts / 1000).strftime("%H:%M") if ts else "")
-
     return {
         "conceptId": concept_id,
-        "derived": True,
-        "times": times,
-        "inflow": inflow,
-        "outflow": outflow,
-        "netInflow": net_inflow,
+        "derived": False,
+        "times": [],
+        "inflow": [],
+        "outflow": [],
+        "netInflow": [],
     }
 
 
@@ -182,6 +157,43 @@ def _compress_rows(rows: list[dict], step: int) -> list[dict]:
     return grouped
 
 
+def _aggregate_rows_by_minute(rows: list[dict]) -> list[dict]:
+    grouped: list[dict] = []
+    current_minute: int | None = None
+    current_rows: list[dict] = []
+
+    def flush() -> None:
+        if not current_rows:
+            return
+        grouped.append(
+            {
+                "ts": current_minute,
+                "open": _safe_float(current_rows[0].get("open"), 0.0),
+                "close": _safe_float(current_rows[-1].get("close"), 0.0),
+                "high": max(_safe_float(item.get("high"), 0.0) for item in current_rows),
+                "low": min(_safe_float(item.get("low"), 0.0) for item in current_rows),
+                "volume": sum(_safe_float(item.get("volume"), 0.0) for item in current_rows),
+                "preClose": _safe_float(current_rows[0].get("preClose"), 0.0),
+            }
+        )
+
+    for row in rows or []:
+        ts = row.get("ts")
+        if not ts:
+            continue
+        minute_ts = int(ts) // 60000 * 60000
+        if current_minute is None:
+            current_minute = minute_ts
+        if minute_ts != current_minute:
+            flush()
+            current_rows = []
+            current_minute = minute_ts
+        current_rows.append(row)
+
+    flush()
+    return grouped
+
+
 def _normalize_sector_index_rows(rows: list[dict]) -> list[dict]:
     normalized: list[dict] = []
     for row in rows or []:
@@ -202,29 +214,18 @@ def _normalize_sector_index_rows(rows: list[dict]) -> list[dict]:
 
 def _clean_kline_rows(rows: list[dict]) -> list[dict]:
     cleaned: list[dict] = []
-    prev_close: float | None = None
-
     for row in rows or []:
         open_price = _safe_float(row.get("open"), 0.0)
         close_price = _safe_float(row.get("close"), 0.0)
         high_price = _safe_float(row.get("high"), 0.0)
         low_price = _safe_float(row.get("low"), 0.0)
-        pre_close = _safe_float(row.get("preClose"), 0.0)
 
         if min(open_price, close_price, high_price, low_price) <= 0:
             continue
         if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
             continue
 
-        reference = pre_close if pre_close > 0 else prev_close
-        if reference and reference > 0:
-            change_ratio = abs(close_price - reference) / reference
-            amplitude_ratio = abs(high_price - low_price) / reference
-            if change_ratio > 0.12 or amplitude_ratio > 0.15:
-                continue
-
         cleaned.append(row)
-        prev_close = close_price
 
     return cleaned
 
@@ -238,7 +239,7 @@ def fetch_concept_kline(concept_id: str, period: str = "1m") -> dict | None:
     anchor_ts = snapshot.get("latestTs") if snapshot else None
     sector_name = _concept_sector_name(concept_id, concept.get("name"))
     sector_rows = _normalize_sector_index_rows(_fetch_sector_index_rows(sector_name, limit=240, anchor_ts=anchor_ts))
-    cleaned_sector_rows = _clean_kline_rows(sector_rows)
+    cleaned_sector_rows = _clean_kline_rows(_aggregate_rows_by_minute(sector_rows))
 
     # 如果 sector_index 只清洗剩下极少几个点，说明这批板块索引数据异常或口径不连续，
     # 改用成分股分钟聚合结果，避免前端只画出两三根蜡烛。
@@ -249,7 +250,7 @@ def fetch_concept_kline(concept_id: str, period: str = "1m") -> dict | None:
     if use_sector_rows:
         rows = cleaned_sector_rows
     else:
-        rows = _clean_kline_rows(fetch_concept_time_sharing(concept_id, limit=240))
+        rows = _clean_kline_rows(_aggregate_rows_by_minute(fetch_concept_time_sharing(concept_id, limit=240)))
     if not rows:
         return {"period": period, "times": [], "data": [], "volumes": []}
 

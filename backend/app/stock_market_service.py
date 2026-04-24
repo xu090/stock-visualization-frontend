@@ -42,7 +42,7 @@ def _fetch_time_sharing(code: str, limit: int = 240) -> list[dict]:
     sql = """
         WITH latest_trade_day AS (
             SELECT MAX(ts::date) AS trade_day
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             WHERE stock_code = %s
               AND ts <= NOW()
         )
@@ -59,7 +59,7 @@ def _fetch_time_sharing(code: str, limit: int = 240) -> list[dict]:
             previous_close,
             udf,
             udz
-        FROM stock_time_sharing
+        FROM stock_time_sharing_compat
         WHERE stock_code = %s
           AND ts::date = (SELECT trade_day FROM latest_trade_day)
           AND ts <= NOW()
@@ -216,30 +216,13 @@ def fetch_stock_capital_flow_history(code: str, concept_id: str | None = None, s
                     "netInflow": [_safe_float(row.get("net_inflow"), None) for row in rows],
                 }
 
-    rows = _fetch_time_sharing(code, limit=8)
-    if not rows:
-        return {"code": code, "derived": True, "times": [], "inflow": [], "outflow": [], "netInflow": []}
-
-    times: list[str] = []
-    inflow: list[float] = []
-    outflow: list[float] = []
-    net_inflow: list[float] = []
-    for row in rows:
-        amount = _safe_float(row.get("amount"), 0.0) or 0.0
-        change_pct = _safe_float(row.get("changePercent"), 0.0) or 0.0
-        net = round(amount * (change_pct / 100.0), 2)
-        times.append(datetime.fromtimestamp(row["ts"] / 1000).strftime("%H:%M") if row.get("ts") else "")
-        inflow.append(round(amount + max(net, 0.0), 2))
-        outflow.append(round(max(amount - net, 0.0), 2))
-        net_inflow.append(net)
-
     return {
         "code": code,
-        "derived": True,
-        "times": times,
-        "inflow": inflow,
-        "outflow": outflow,
-        "netInflow": net_inflow,
+        "derived": False,
+        "times": [],
+        "inflow": [],
+        "outflow": [],
+        "netInflow": [],
     }
 
 
@@ -264,37 +247,63 @@ def _compress_rows(rows: list[dict], step: int) -> list[dict]:
     return grouped
 
 
+def _aggregate_rows_by_minute(rows: list[dict]) -> list[dict]:
+    grouped: list[dict] = []
+    current_minute: int | None = None
+    current_rows: list[dict] = []
+
+    def flush() -> None:
+        if not current_rows:
+            return
+        grouped.append(
+            {
+                "ts": current_minute,
+                "open": _safe_float(current_rows[0].get("open"), 0.0),
+                "close": _safe_float(current_rows[-1].get("close"), 0.0),
+                "high": max((_safe_float(item.get("high"), 0.0) or 0.0) for item in current_rows),
+                "low": min((_safe_float(item.get("low"), 0.0) or 0.0) for item in current_rows),
+                "volume": sum((_safe_float(item.get("volume"), 0.0) or 0.0) for item in current_rows),
+                "preClose": _safe_float(current_rows[0].get("preClose"), 0.0),
+            }
+        )
+
+    for row in rows or []:
+        ts = row.get("ts")
+        if not ts:
+            continue
+        minute_ts = int(ts) // 60000 * 60000
+        if current_minute is None:
+            current_minute = minute_ts
+        if minute_ts != current_minute:
+            flush()
+            current_rows = []
+            current_minute = minute_ts
+        current_rows.append(row)
+
+    flush()
+    return grouped
+
+
 def _clean_kline_rows(rows: list[dict]) -> list[dict]:
     cleaned: list[dict] = []
-    prev_close: float | None = None
-
     for row in rows or []:
         open_price = _safe_float(row.get("open"), 0.0) or 0.0
         close_price = _safe_float(row.get("close"), 0.0) or 0.0
         high_price = _safe_float(row.get("high"), 0.0) or 0.0
         low_price = _safe_float(row.get("low"), 0.0) or 0.0
-        pre_close = _safe_float(row.get("preClose"), 0.0) or 0.0
 
         if min(open_price, close_price, high_price, low_price) <= 0:
             continue
         if high_price < max(open_price, close_price) or low_price > min(open_price, close_price):
             continue
 
-        reference = pre_close if pre_close > 0 else prev_close
-        if reference and reference > 0:
-            change_ratio = abs(close_price - reference) / reference
-            amplitude_ratio = abs(high_price - low_price) / reference
-            if change_ratio > 0.12 or amplitude_ratio > 0.15:
-                continue
-
         cleaned.append(row)
-        prev_close = close_price
 
     return cleaned
 
 
 def fetch_stock_kline(code: str, period: str = "1m") -> dict:
-    rows = _clean_kline_rows(_fetch_time_sharing(code, limit=240))
+    rows = _clean_kline_rows(_aggregate_rows_by_minute(_fetch_time_sharing(code, limit=240)))
     if not rows:
         return {"period": period, "times": [], "data": [], "volumes": []}
 

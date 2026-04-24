@@ -282,8 +282,8 @@
               </div>
 
               <div class="metric-row">
-                <span class="k">强度/异动</span>
-                <span class="v strong">{{ item.strength ?? '--' }} / {{ item.spike5m ?? '--' }}</span>
+                <span class="k">波动率</span>
+                <span class="v strong">{{ fmtPctAbs(item.volatility) }}</span>
               </div>
             </div>
 
@@ -337,15 +337,6 @@
             <div class="f-label">上涨占比（%）</div>
             <div class="f-ctrl">
               <el-slider v-model="upRatioRangePct" range :min="0" :max="100" :step="5" show-input />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">强度 / 异动</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minStrength" :min="0" :max="100" :step="5" controls-position="right" placeholder="强度≥" />
-              <span class="to">/</span>
-              <el-input-number v-model="homeFilter.filters.minSpike5m" :min="0" :max="100" :step="5" controls-position="right" placeholder="异动≥" />
             </div>
           </div>
 
@@ -481,8 +472,7 @@ const metricDefs = [
   { key: 'changeAmount', label: '涨跌额', tip: '概念当前涨跌额' },
   { key: 'amount', label: '成交额', tip: '概念成交额' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
-  { key: 'strength', label: '强度', tip: '0~100 强度' },
-  { key: 'spike5m', label: '异动', tip: '短线异动热度' }
+  { key: 'volatility', label: '波动率', tip: '数据库行情振幅均值' }
 ]
 const metricLabel = (k) => metricDefs.find(x => x.key === k)?.label || k
 const visibleMetricKeys = new Set(metricDefs.map(item => item.key))
@@ -518,8 +508,8 @@ const ensureFilterShape = () => {
   if (!('minUpRatio' in f)) f.minUpRatio = null
   if (!('maxUpRatio' in f)) f.maxUpRatio = null
 
-  if (!('minStrength' in f)) f.minStrength = null
-  if (!('minSpike5m' in f)) f.minSpike5m = null
+  delete f.minStrength
+  delete f.minSpike5m
 
   if (!('maxVolatility' in f)) f.maxVolatility = null
   if (!('maxDrawdown20d' in f)) f.maxDrawdown20d = null
@@ -555,8 +545,8 @@ const resetFilters = () => {
   f.maxVolRatio = null
   f.minUpRatio = null
   f.maxUpRatio = null
-  f.minStrength = null
-  f.minSpike5m = null
+  delete f.minStrength
+  delete f.minSpike5m
   f.maxVolatility = null
   f.maxDrawdown20d = null
 }
@@ -586,7 +576,6 @@ const hasAnyFilter = computed(() => {
     'minChangeAmount','maxChangeAmount',
     'minAmountY','maxAmountY',
     'minUpRatio','maxUpRatio',
-    'minStrength','minSpike5m',
     'maxVolatility','maxDrawdown20d'
   ]
   const numericHas = keys.some(k => f[k] != null && f[k] !== '')
@@ -682,8 +671,6 @@ function passFilters(item, f) {
   const changeAmount = Number(item?.changeAmount ?? 0)
   const amountY = Number(item?.amount ?? 0) / 1e8
   const upRatio = Number(item?.upRatio ?? 0)
-  const strength = Number(item?.strength ?? 0)
-  const spike5m = Number(item?.spike5m ?? 0)
   const volatility = Number(item?.volatility ?? item?.rtVolatility ?? 0)
   const drawdown20d = Number(item?.drawdown20d ?? item?.rtDrawdown20d ?? 0)
 
@@ -698,8 +685,6 @@ function passFilters(item, f) {
   if (f.minUpRatio != null && upRatio < Number(f.minUpRatio)) return false
   if (f.maxUpRatio != null && upRatio > Number(f.maxUpRatio)) return false
 
-  if (f.minStrength != null && strength < Number(f.minStrength)) return false
-  if (f.minSpike5m != null && spike5m < Number(f.minSpike5m)) return false
   if (f.maxVolatility != null && volatility > Number(f.maxVolatility)) return false
   if (f.maxDrawdown20d != null && drawdown20d < Number(f.maxDrawdown20d)) return false
 
@@ -869,8 +854,6 @@ const summaryFiltersText = computed(() => {
   )
   if (e) parts.push(`上涨占比${e}`)
 
-  if (f.minStrength != null) parts.push(`强度≥${f.minStrength}`)
-  if (f.minSpike5m != null) parts.push(`异动≥${f.minSpike5m}`)
   if (f.maxVolatility != null) parts.push(`波动≤${f.maxVolatility}`)
   if (f.maxDrawdown20d != null) parts.push(`回撤≥${f.maxDrawdown20d}%`)
 

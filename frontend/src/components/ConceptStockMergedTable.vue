@@ -137,6 +137,7 @@ import { Star, StarFilled } from '@element-plus/icons-vue'
 const props = defineProps({
   concept: { type: Object, default: null },
   stocks: { type: Array, default: () => [] },
+  analysisData: { type: Object, default: null },
   analysisWindow: { type: Number, default: 30 }
 })
 
@@ -158,7 +159,10 @@ const maPatternOptions = [
   { label: '均线缠绕', value: 'mixed' }
 ]
 
-const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, { days: props.analysisWindow }))
+const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, {
+  days: props.analysisWindow,
+  analysisData: props.analysisData
+}))
 const filteredStocks = computed(() => {
   const keyword = query.keyword.trim().toLowerCase()
   return analysisPayload.value.stocks.filter(item => {

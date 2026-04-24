@@ -73,9 +73,6 @@
           <div class="panel-card">
             <div class="panel-title">资金流向</div>
             <div ref="fundChartRef" class="chart chart-fund"></div>
-            <div v-if="capitalFlow?.derived" class="chart-note">
-              基于成交额和涨跌幅推导的代理值。
-            </div>
           </div>
 
           <div class="panel-card">
@@ -90,10 +87,18 @@
             <div ref="klineChartRef" class="chart chart-kline"></div>
           </div>
         </div>
-        <ConceptAnalysisPanel :concept="concept" :stocks="stocks" v-model:analysisWindow="analysisWindow" />
-        <ConceptStockMergedTable
+        <ConceptAnalysisPanel
+          :key="`analysis-panel-${curId}-${analysisWindow}-${analysisData?.id || 'empty'}`"
           :concept="concept"
           :stocks="stocks"
+          :analysis-data="analysisData"
+          v-model:analysisWindow="analysisWindow"
+        />
+        <ConceptStockMergedTable
+          :key="`analysis-table-${curId}-${analysisWindow}-${analysisData?.id || 'empty'}`"
+          :concept="concept"
+          :stocks="stocks"
+          :analysis-data="analysisData"
           :analysis-window="analysisWindow"
         />
       </div>
@@ -109,6 +114,7 @@ import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
+import { apiGet } from '@/utils/api'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useConceptDetailStore } from '@/stores/conceptDetail'
@@ -193,6 +199,8 @@ const quoteUpdatedTs = computed(() => {
 const quoteUpdatedText = computed(() => formatDateTime(quoteUpdatedTs.value))
 
 const analysisWindow = ref(30)
+const analysisData = ref(null)
+let analysisRequestSeq = 0
 
 const isFav = computed(() => conceptStore.isConceptFavorite?.(curId.value) ?? false)
 async function toggleFav() {
@@ -392,6 +400,37 @@ async function refreshMinuteSnapshot() {
   await stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null })
 }
 
+async function fetchAnalysisData() {
+  const requestId = curId.value
+  const requestWindow = analysisWindow.value
+  const requestSeq = ++analysisRequestSeq
+  analysisData.value = null
+  if (!requestId) {
+    analysisData.value = null
+    return null
+  }
+  try {
+    const row = await apiGet(`/api/concepts/${encodeURIComponent(requestId)}/ma-analysis?window=${encodeURIComponent(requestWindow)}`)
+    const stillCurrent =
+      requestSeq === analysisRequestSeq &&
+      String(curId.value) === String(requestId) &&
+      Number(analysisWindow.value) === Number(requestWindow)
+    if (stillCurrent) {
+      analysisData.value = row
+    }
+    return row
+  } catch {
+    const stillCurrent =
+      requestSeq === analysisRequestSeq &&
+      String(curId.value) === String(requestId) &&
+      Number(analysisWindow.value) === Number(requestWindow)
+    if (stillCurrent) {
+      analysisData.value = null
+    }
+    return null
+  }
+}
+
 function restartQuotePolling() {
   stopQuotePolling()
   quotePollingTimer = setInterval(() => {
@@ -401,6 +440,7 @@ function restartQuotePolling() {
 
 async function loadPageData() {
   if (!curId.value) return
+  analysisData.value = null
   const codes = stockCodesNormalized.value
   await nextTick()
   const latestDetail = await conceptDetailStore.fetchDetail(curId.value)
@@ -408,6 +448,7 @@ async function loadPageData() {
     conceptDetailStore.fetchCapitalFlow(curId.value),
     conceptDetailStore.fetchKline(curId.value, klinePeriod.value),
     conceptDetailStore.fetchStocks(curId.value),
+    fetchAnalysisData(),
     codes.length ? stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null }) : Promise.resolve(),
   ])
   restartQuotePolling()
@@ -432,6 +473,10 @@ watch(klinePeriod, async value => {
   if (!curId.value) return
   await conceptDetailStore.fetchKline(curId.value, value)
   initKlineChart()
+})
+
+watch(analysisWindow, async () => {
+  await fetchAnalysisData()
 })
 
 watch(capitalFlow, () => {

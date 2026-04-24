@@ -6,7 +6,8 @@ from typing import List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app.config import AUTO_BOOTSTRAP_CONCEPTS, ENABLE_KAFKA_CONSUMER
+from app.config import AUTO_BOOTSTRAP_CONCEPTS
+from app.concept_analysis_service import fetch_concept_analysis
 from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
 from app.concept_market_service import (
     fetch_concept_capital_flow_history,
@@ -27,7 +28,8 @@ from app.concept_service import (
     update_user_concept,
 )
 from app.db import get_conn
-from app.kafka_consumer import run_event_consumer, run_stock_time_sharing_consumer
+from app.db_indexes import ensure_query_indexes
+from app.market_data_schema import ensure_stock_time_sharing_compat_view
 from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_feed, fetch_news_list
 from app.stock_names import backfill_stock_names
 from app.stock_market_service import (
@@ -167,7 +169,7 @@ def fetch_quotes_by_codes(codes: list[str], snapshot_ts: int | None = None) -> l
                 udp,
                 udf,
                 udz
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             WHERE stock_code = ANY(%s)
               AND ts <= %s
             ORDER BY stock_code, ts DESC
@@ -190,7 +192,7 @@ def fetch_quotes_by_codes(codes: list[str], snapshot_ts: int | None = None) -> l
                 udp,
                 udf,
                 udz
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             WHERE stock_code = ANY(%s)
               AND ts <= NOW()
             ORDER BY stock_code, ts DESC
@@ -220,7 +222,7 @@ def fetch_time_sharing(code: str, limit: int = 120) -> list[dict]:
             previous_close,
             udf,
             udz
-        FROM stock_time_sharing
+        FROM stock_time_sharing_compat
         WHERE stock_code = %s
           AND ts <= NOW()
         ORDER BY ts DESC
@@ -252,30 +254,18 @@ def fetch_time_sharing(code: str, limit: int = 120) -> list[dict]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # 启动时先保证概念主数据存在，再启动 Kafka 分钟行情消费者。
-    stop_event = asyncio.Event()
-    consumer_tasks: list[asyncio.Task] = []
-
+    # 启动时先保证基础主数据和行情兼容视图可用。
     if AUTO_BOOTSTRAP_CONCEPTS:
         await asyncio.to_thread(ensure_default_concepts)
     await asyncio.to_thread(ensure_strategies_table)
     await asyncio.to_thread(ensure_select_strategies)
-
-    if ENABLE_KAFKA_CONSUMER:
-        consumer_tasks.append(asyncio.create_task(run_stock_time_sharing_consumer(stop_event)))
-        consumer_tasks.append(asyncio.create_task(run_event_consumer(stop_event)))
+    await asyncio.to_thread(ensure_stock_time_sharing_compat_view)
+    await asyncio.to_thread(ensure_query_indexes)
 
     try:
         yield
     finally:
-        stop_event.set()
-        for consumer_task in consumer_tasks:
-            consumer_task.cancel()
-        for consumer_task in consumer_tasks:
-            try:
-                await consumer_task
-            except asyncio.CancelledError:
-                pass
+        pass
 
 
 app = FastAPI(title="Stock Visualization Backend", lifespan=lifespan)
@@ -289,9 +279,9 @@ def health() -> dict:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()
-        return {"ok": True, "postgres": "connected", "consumerEnabled": ENABLE_KAFKA_CONSUMER}
+        return {"ok": True, "postgres": "connected", "consumerEnabled": False}
     except Exception as exc:
-        return {"ok": False, "postgres": str(exc), "consumerEnabled": ENABLE_KAFKA_CONSUMER}
+        return {"ok": False, "postgres": str(exc), "consumerEnabled": False}
 
 
 @app.post("/api/quotes")
@@ -408,6 +398,14 @@ def get_concept_macro_api(concept_id: str, limit: int = 240) -> dict:
     return {"data": row}
 
 
+@app.get("/api/concepts/{concept_id}/ma-analysis")
+def get_concept_ma_analysis_api(concept_id: str, window: int = 30) -> dict:
+    row = fetch_concept_analysis(concept_id, min(max(window, 20), 90))
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept analysis not found")
+    return {"data": row}
+
+
 @app.get("/api/concepts/{concept_id}/timesharing")
 def get_concept_time_sharing(concept_id: str, limit: int = 120) -> dict:
     rows = fetch_concept_time_sharing(concept_id, min(max(limit, 1), 240))
@@ -477,6 +475,12 @@ def bootstrap_concepts() -> dict:
 def sync_stock_names() -> dict:
     # 把外部股票名称映射回填到当前 stocks 表中，修复早期只写代码不写中文名的记录。
     result = backfill_stock_names()
+    return {"ok": True, "data": result}
+
+
+@app.post("/api/admin/db-indexes")
+def sync_db_indexes() -> dict:
+    result = ensure_query_indexes()
     return {"ok": True, "data": result}
 
 

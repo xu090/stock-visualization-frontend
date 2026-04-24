@@ -90,9 +90,6 @@
           <div class="panel-title">资金流向</div>
         </div>
         <div ref="fundChartRef" class="chart chart-fund" />
-        <div v-if="capitalFlow?.derived" class="chart-note">
-          当前未命中独立个股资金流表，图中为基于分钟成交额和涨跌幅推导的代理值。
-        </div>
       </div>
 
       <div class="panel-card">

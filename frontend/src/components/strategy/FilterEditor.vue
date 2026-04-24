@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/no-mutating-props -->
 <template>
   <div class="filter-editor hide-scrollbar">
     <div class="f-row">
@@ -39,16 +40,7 @@
     <div class="f-row">
       <div class="f-name">上涨占比（%）</div>
       <div class="f-range slider">
-        <el-slider  small v-model="upRatioRangePct" range :min="0" :max="100" :step="5" show-input />
-      </div>
-    </div>
-
-    <div class="f-row">
-      <div class="f-name">强度 / 异动</div>
-      <div class="f-range">
-        <el-input-number v-model="filters.minStrength" :min="0" :max="100" :step="5" controls-position="right" placeholder="强度≥" />
-        <span class="sep">/</span>
-        <el-input-number v-model="filters.minSpike5m" :min="0" :max="100" :step="5" controls-position="right" placeholder="异动≥" />
+        <el-slider small v-model="upRatioRangePct" range :min="0" :max="100" :step="5" show-input />
       </div>
     </div>
 
@@ -64,14 +56,14 @@
 </template>
 
 <script setup>
+/* global defineProps */
+/* eslint-disable vue/no-mutating-props */
 import { computed } from 'vue'
 
 const props = defineProps({
-  /** v-model:filters */
-  filters: { type: Object, required: true } // 直接传 editForm.snapshot.filters 的引用
+  filters: { type: Object, required: true }
 })
 
-/** 上涨占比 slider（0~1 <-> 0~100） */
 const upRatioRangePct = computed({
   get: () => {
     const f = props.filters || {}
@@ -100,7 +92,6 @@ const upRatioRangePct = computed({
   overflow: auto;
 }
 
-/* ✅ 隐藏滚动条但仍可滚动 */
 .hide-scrollbar{
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -138,7 +129,6 @@ const upRatioRangePct = computed({
   font-weight: 900;
 }
 
-/* 让内部控件更统一一点（组件内 deep） */
 :deep(.el-input-number){
   width: 100px;
 }

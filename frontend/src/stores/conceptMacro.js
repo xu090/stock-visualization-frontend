@@ -111,16 +111,15 @@ function formatAxisLabel(ts, axisTimestamps = []) {
 
 function toCategoryId(item, indexCurve) {
   const change = Number(item?.change || 0)
-  const strength = Number(item?.strength || 0)
   const drawdown20d = Number(item?.drawdown20d || 0)
   const end = lastFinite(indexCurve)
   const finiteValues = indexCurve.map(Number).filter(Number.isFinite)
   const minPoint = finiteValues.length ? Math.min(...finiteValues) : 0
   const curveDrawdown = end - minPoint
 
-  if (end >= 2 && change >= 0 && strength >= 55) return 'leaders'
+  if (end >= 2 && change >= 0) return 'leaders'
   if (end <= -6 || (change <= -1.2 && drawdown20d <= -10)) return 'weak'
-  if (Math.abs(end) <= 2 || (curveDrawdown > 2.5 && strength < 55)) return 'consolidation'
+  if (Math.abs(end) <= 2 || curveDrawdown > 2.5) return 'consolidation'
   return 'rebound'
 }
 

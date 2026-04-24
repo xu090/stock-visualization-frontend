@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.cache import invalidate_concept_cache
 from app.db import get_conn
 from app.stock_names import get_stock_name
 
@@ -229,6 +230,7 @@ def bootstrap_default_concepts() -> dict[str, int]:
                     )
         conn.commit()
 
+    invalidate_concept_cache()
     return {
         "conceptCount": len(DEFAULT_CONCEPTS),
         "stockCount": len(all_codes),

@@ -162,8 +162,7 @@ const metricDefs = [
   { key: 'amount', label: '成交额' },
   { key: 'volRatio', label: '量比' },
   { key: 'upRatio', label: '上涨占比' },
-  { key: 'strength', label: '强度' },
-  { key: 'spike5m', label: '异动' }
+  { key: 'volatility', label: '波动率' }
 ]
 
 const metricLabel = key => metricDefs.find(x => x.key === key)?.label || key
@@ -212,8 +211,6 @@ const filtersTextFull = snap => {
     '%'
   )
   if (e) parts.push(`上涨占比${e}`)
-  if (f.minStrength != null) parts.push(`强度>=${f.minStrength}`)
-  if (f.minSpike5m != null) parts.push(`异动>=${f.minSpike5m}`)
   if (f.maxVolatility != null) parts.push(`波动<=${f.maxVolatility}`)
   if (f.maxDrawdown20d != null) parts.push(`回撤>=${f.maxDrawdown20d}%`)
   return parts.join('，') || '无'
@@ -262,8 +259,6 @@ const emptySelectFilters = () => ({
   maxVolRatio: null,
   minUpRatio: null,
   maxUpRatio: null,
-  minStrength: null,
-  minSpike5m: null,
   maxVolatility: null,
   maxDrawdown20d: null
 })

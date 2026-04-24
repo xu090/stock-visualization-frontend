@@ -76,6 +76,7 @@ import { buildConceptAnalysisPayload } from '@/utils/conceptAnalysis'
 const props = defineProps({
   concept: { type: Object, default: null },
   stocks: { type: Array, default: () => [] },
+  analysisData: { type: Object, default: null },
   analysisWindow: { type: Number, default: 30 }
 })
 const emit = defineEmits(['update:analysisWindow'])
@@ -87,7 +88,10 @@ const analysisWindowModel = computed({
   set: (value) => emit('update:analysisWindow', value)
 })
 
-const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, { days: props.analysisWindow }))
+const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, {
+  days: props.analysisWindow,
+  analysisData: props.analysisData
+}))
 
 const conceptDirectionLabel = computed(() => {
   if (analysisPayload.value.conceptDirection === 'up') return '上涨趋势'
@@ -248,7 +252,7 @@ watch(
 )
 
 watch(
-  [analysisWindowModel, selectedCompareCode, stockMaPeriod, () => props.concept?.id, () => props.stocks.length],
+  [analysisWindowModel, selectedCompareCode, stockMaPeriod, () => props.concept?.id, () => props.stocks.length, () => props.analysisData],
   () => { refreshCharts() }
 )
 

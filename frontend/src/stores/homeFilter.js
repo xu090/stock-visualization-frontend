@@ -7,8 +7,6 @@ const emptyFilters = () => ({
   minAmountY: null,
   minVolRatio: null,
   minUpRatio: null,
-  minStrength: null,
-  minSpike5m: null,
   maxVolatility: null,
   maxDrawdown20d: null
 })
@@ -33,6 +31,8 @@ export const useHomeFilterStore = defineStore('homeFilter', {
       if (rawFilters.maxChangeAmount == null && rawFilters.maxNetInflowY != null) rawFilters.maxChangeAmount = rawFilters.maxNetInflowY
       delete rawFilters.minNetInflowY
       delete rawFilters.maxNetInflowY
+      delete rawFilters.minStrength
+      delete rawFilters.minSpike5m
       return {
         ...snapshot,
         selectedMetrics,

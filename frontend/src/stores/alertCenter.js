@@ -92,8 +92,7 @@ export const useAlertCenterStore = defineStore('alertCenter', {
           change: metrics.change ?? 0,
           netInflow: metrics.netInflow ?? 0,
           upRatio: metrics.upRatio ?? 0,
-          strength: metrics.strength ?? 0,
-          spike5m: metrics.spike5m ?? 0
+          volatility: metrics.volatility ?? 0
         },
         simulationMode: 'live'
       }

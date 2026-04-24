@@ -23,7 +23,7 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
                 cs.concept_id,
                 MAX(st.ts) AS latest_ts
             FROM concept_stocks cs
-            JOIN stock_time_sharing st ON st.stock_code = cs.stock_code
+            JOIN stock_time_sharing_compat st ON st.stock_code = cs.stock_code
             WHERE st.ts <= NOW()
             GROUP BY cs.concept_id
         ),
@@ -43,7 +43,7 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
                 st.udz
             FROM concept_stocks cs
             JOIN latest_concept_minute lcm ON lcm.concept_id = cs.concept_id
-            JOIN stock_time_sharing st
+            JOIN stock_time_sharing_compat st
               ON st.stock_code = cs.stock_code
              AND st.ts <= lcm.latest_ts
              AND st.ts::date = lcm.latest_ts::date
@@ -106,8 +106,6 @@ def _build_concept_snapshot(row: dict) -> dict:
 
     change_amount = round(close_price - pre_close, 2)
     change = round(((close_price - pre_close) / pre_close) * 100, 2) if pre_close else 0.0
-    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
-
     return {
         "id": row["id"],
         "name": row["name"],
@@ -126,8 +124,8 @@ def _build_concept_snapshot(row: dict) -> dict:
         "upRatio": round(up_ratio, 2),
         "limitUp": row.get("limit_up"),
         "limitDown": row.get("limit_down"),
-        "strength": strength,
-        "spike5m": round(abs(change) * 8 + up_ratio * 30, 2),
+        "strength": None,
+        "spike5m": None,
         "volatility": round(_safe_num(row.get("volatility"), 0.0), 2),
         "latestTs": latest_ts,
         "updatedAt": updated_at,
@@ -166,7 +164,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
                 SUM(st.amount) AS amount,
                 SUM(CASE WHEN st.close > st.previous_close THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) AS up_ratio,
                 COUNT(*) AS stock_count
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts >= NOW() - INTERVAL '20 days'
@@ -209,7 +207,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
                 AVG(st.previous_close) AS pre_close
                 ,
                 SUM(st.vol) AS volume
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts >= NOW() - INTERVAL '20 days'
@@ -239,7 +237,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
             "change5m": 0.0,
             "change20d": 0.0,
             "drawdown20d": 0.0,
-            "strength": 0,
+            "strength": None,
             "amount": 0.0,
             "turnover": 0.0,
             "upRatio": 0.0,
@@ -259,8 +257,6 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
     change_amount = round(latest_close - prev_close, 2)
     turnover = _safe_num(row.get("turnover"), 0.0)
     up_ratio = _safe_num(row.get("up_ratio"), 0.0)
-    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
-
     def pct_from(base: float) -> float:
         if not base:
             return 0.0
@@ -274,7 +270,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
         "change5m": pct_from(five_close),
         "change20d": pct_from(first_close),
         "drawdown20d": round(((latest_close - max_close) / max_close) * 100, 2) if max_close else 0.0,
-        "strength": strength,
+        "strength": None,
         "amount": _safe_num(row.get("amount"), 0.0),
         "turnover": round(turnover, 2),
         "upRatio": round(up_ratio, 2),

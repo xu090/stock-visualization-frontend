@@ -76,7 +76,7 @@ def search_stocks(query: str, limit: int = 20) -> list[dict]:
                 udp,
                 udf,
                 udz
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             ORDER BY stock_code, ts DESC
         )
         SELECT
@@ -142,7 +142,7 @@ def fetch_stock_detail(code: str) -> dict | None:
                 udp,
                 udf,
                 udz
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             ORDER BY stock_code, ts DESC
         )
         SELECT

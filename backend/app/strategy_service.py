@@ -100,10 +100,9 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["spike5m", "volRatio"],
+            "selectedMetrics": ["change", "amount"],
             "filters": {
-                "minSpike5m": 70,
-                "minVolRatio": 1.3,
+                "minChange": 1.5,
                 "minAmountY": 6,
             },
         },
@@ -118,9 +117,10 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["strength", "amount"],
+            "selectedMetrics": ["change", "amount", "upRatio"],
             "filters": {
-                "minStrength": 55,
+                "minChange": 0,
+                "minUpRatio": 0.5,
                 "maxVolatility": 22,
                 "maxDrawdown20d": -8,
                 "minAmountY": 8,

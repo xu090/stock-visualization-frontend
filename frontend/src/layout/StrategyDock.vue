@@ -237,8 +237,7 @@ const metricDefs = [
   { key: 'amount', label: '成交额', tip: '概念成交额' },
   { key: 'volRatio', label: '量比', tip: '量比>1 常见为放量' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
-  { key: 'strength', label: '强度', tip: '0~100 强度' },
-  { key: 'spike5m', label: '异动', tip: '短线异动热度' }
+  { key: 'volatility', label: '波动率', tip: '数据库行情振幅均值' }
 ]
 
 const currentAppliedSelectId = computed({
@@ -279,8 +278,6 @@ const emptySelectFilters = () => ({
   maxVolRatio: null,
   minUpRatio: null,
   maxUpRatio: null,
-  minStrength: null,
-  minSpike5m: null,
   maxVolatility: null,
   maxDrawdown20d: null
 })
@@ -409,8 +406,6 @@ const buildFilterParts = f => {
     '%'
   )
   if (e) parts.push(`上涨占比${e}`)
-  if (f.minStrength != null) parts.push(`强度>=${f.minStrength}`)
-  if (f.minSpike5m != null) parts.push(`异动>=${f.minSpike5m}`)
   if (f.maxVolatility != null) parts.push(`波动<=${f.maxVolatility}`)
   if (f.maxDrawdown20d != null) parts.push(`回撤>=${f.maxDrawdown20d}%`)
   return parts

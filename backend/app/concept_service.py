@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any
 
+from app.cache import app_cache, invalidate_concept_cache
 from app.db import get_conn
 from app.stock_names import get_stock_name
 
@@ -152,7 +153,7 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
                 udp,
                 udf,
                 udz
-            FROM stock_time_sharing
+            FROM stock_time_sharing_compat
             ORDER BY stock_code, ts DESC
         )
         SELECT
@@ -218,7 +219,6 @@ def _build_concept_realtime_snapshot(row: dict, sector_snapshot_map: dict[str, d
     else:
         latest_ts = int(row["latest_ts"].timestamp() * 1000) if row.get("latest_ts") else None
 
-    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
     return {
         "id": row["id"],
         "name": row["name"],
@@ -237,8 +237,8 @@ def _build_concept_realtime_snapshot(row: dict, sector_snapshot_map: dict[str, d
         "upRatio": round(up_ratio, 2),
         "limitUp": row.get("limit_up"),
         "limitDown": row.get("limit_down"),
-        "strength": strength,
-        "spike5m": round(abs(change) * 8 + up_ratio * 30, 2),
+        "strength": None,
+        "spike5m": None,
         "volatility": round(_safe_num(row.get("volatility"), 0.0), 2),
         "latestTs": latest_ts,
         "open": open_price,
@@ -393,6 +393,7 @@ def create_user_concept(payload: dict) -> dict:
             _replace_concept_stocks(cur, concept_id, stock_codes)
         conn.commit()
 
+    invalidate_concept_cache(concept_id)
     return _map_concept_row(row, stock_codes)
 
 
@@ -469,6 +470,7 @@ def update_user_concept(concept_id: str, payload: dict) -> dict | None:
                 stock_codes = _fetch_concept_stock_codes(cur, concept_id)
         conn.commit()
 
+    invalidate_concept_cache(concept_id)
     return _map_concept_row(row, stock_codes)
 
 
@@ -490,10 +492,11 @@ def delete_user_concept(concept_id: str) -> bool:
             cur.execute("DELETE FROM concepts WHERE id = %s", (concept_id,))
         conn.commit()
 
+    invalidate_concept_cache(concept_id)
     return True
 
 
-def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> list[dict]:
+def _fetch_concept_stocks_uncached(concept_id: str, snapshot_ts: int | None = None) -> list[dict]:
     # ????????????????????????????
     # ???????????????????????????????? 3 ? 1 ??
     if snapshot_ts:
@@ -518,7 +521,7 @@ def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> lis
                     st.udz
                 FROM concept_stocks cs
                 JOIN anchor a ON TRUE
-                JOIN stock_time_sharing st
+                JOIN stock_time_sharing_compat st
                   ON st.stock_code = cs.stock_code
                  AND st.ts <= a.anchor_ts
                 WHERE cs.concept_id = %s
@@ -564,7 +567,7 @@ def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> lis
                     st.udp,
                     st.udz
                 FROM concept_stocks cs
-                JOIN stock_time_sharing st
+                JOIN stock_time_sharing_compat st
                   ON st.stock_code = cs.stock_code
                  AND st.ts <= NOW()
                 WHERE cs.concept_id = %s
@@ -634,12 +637,22 @@ def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> lis
         )
     return result
 
+
+def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> list[dict]:
+    normalized_id = str(concept_id or "").strip()
+    normalized_snapshot = int(snapshot_ts) if snapshot_ts else 0
+    return app_cache.get_or_set(
+        f"concept:stocks:{normalized_id}:{normalized_snapshot}",
+        ttl_seconds=600,
+        factory=lambda: _fetch_concept_stocks_uncached(normalized_id, normalized_snapshot or None),
+    )
+
 def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
     # ????????????????????????????????? K ????
     sql = """
         WITH latest_trade_day AS (
             SELECT MAX(st.ts::date) AS trade_day
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts <= NOW()
@@ -657,7 +670,7 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
                 st.amount,
                 st.udf,
                 st.udz
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts::date = (SELECT trade_day FROM latest_trade_day)
@@ -728,7 +741,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
                 SUM(st.amount) AS amount,
                 SUM(CASE WHEN st.udf > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) AS up_ratio,
                 COUNT(*) AS stock_count
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts >= NOW() - INTERVAL '20 days'
@@ -768,7 +781,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
                 st.ts,
                 AVG(st.close) AS close,
                 AVG(st.udf) AS change
-            FROM stock_time_sharing st
+            FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts >= NOW() - INTERVAL '20 days'
@@ -796,7 +809,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
             "change5m": 0.0,
             "change20d": 0.0,
             "drawdown20d": 0.0,
-            "strength": 0,
+            "strength": None,
             "amount": 0.0,
             "turnover": 0.0,
             "upRatio": 0.0,
@@ -819,8 +832,6 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
         change_amount = round(_safe_num(sector_snapshot.get("change"), change_amount), 2)
     turnover = _safe_num(row["turnover"], 0.0)
     up_ratio = _safe_num(row["up_ratio"], 0.0)
-    strength = max(0, min(100, round((change * 6) + (up_ratio * 40) + min(turnover, 10) * 2)))
-
     def pct_from(base: float) -> float:
         if not base:
             return 0.0
@@ -834,7 +845,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
         "change5m": pct_from(five_close),
         "change20d": pct_from(first_close),
         "drawdown20d": round(((latest_close - max_close) / max_close) * 100, 2) if max_close else 0.0,
-        "strength": strength,
+        "strength": None,
         "amount": _safe_num(row["amount"], 0.0),
         "turnover": round(turnover, 2),
         "upRatio": round(up_ratio, 2),

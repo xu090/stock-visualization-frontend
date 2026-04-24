@@ -32,14 +32,4 @@ def get_env(name: str, default: str | None = None) -> str | None:
 
 POSTGRES_DSN = get_env("POSTGRES_DSN", "postgresql://postgres:postgres@127.0.0.1:5432/stock_app")
 STOCK_NAME_MAPPING_FILE = get_env("STOCK_NAME_MAPPING_FILE", r"e:\data_process\data_collection\stock_name_mapping.py")
-
-KAFKA_BOOTSTRAP_SERVERS = get_env(
-    "KAFKA_BOOTSTRAP_SERVERS",
-    "172.29.34.31:9092,172.29.34.32:9092,172.29.34.33:9092",
-)
-KAFKA_STOCK_TIME_SHARING_TOPIC = get_env("KAFKA_STOCK_TIME_SHARING_TOPIC", "stock-time-sharing-topic")
-KAFKA_EVENT_TOPIC = get_env("KAFKA_EVENT_TOPIC", "event")
-KAFKA_GROUP_ID = get_env("KAFKA_GROUP_ID", "stock-visualization-stock-time-sharing")
-KAFKA_AUTO_OFFSET_RESET = get_env("KAFKA_AUTO_OFFSET_RESET", "latest")
-ENABLE_KAFKA_CONSUMER = str(get_env("ENABLE_KAFKA_CONSUMER", "true")).lower() in {"1", "true", "yes", "on"}
 AUTO_BOOTSTRAP_CONCEPTS = str(get_env("AUTO_BOOTSTRAP_CONCEPTS", "true")).lower() in {"1", "true", "yes", "on"}
