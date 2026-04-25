@@ -154,7 +154,7 @@
 
     <el-dialog
       v-model="editVisible"
-      title="编辑筛选策略"
+      :title="editDialogTitle"
       width="940px"
       class="edit-dialog"
       :close-on-click-modal="false"
@@ -162,6 +162,14 @@
       destroy-on-close
     >
       <div class="edit-shell" v-if="editForm">
+        <el-alert
+          v-if="isEditingPreset"
+          title="系统预设策略不会被修改，保存后将生成一条新的自定义策略。"
+          type="info"
+          show-icon
+          :closable="false"
+          class="preset-edit-alert"
+        />
         <div class="edit-two-col">
           <div class="col-left">
             <div class="edit-top-card">
@@ -212,7 +220,7 @@
 
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitEdit">保存修改</el-button>
+        <el-button type="primary" @click="submitEdit">{{ submitEditText }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -469,12 +477,18 @@ const onAllDialogCreate = async ({ payload }) => {
 
 const editVisible = ref(false)
 const editForm = ref(null)
+const isEditingPreset = computed(() => !!editForm.value && !editForm.value.isCustom)
+const editDialogTitle = computed(() => isEditingPreset.value ? '基于预设新建策略' : '编辑筛选策略')
+const submitEditText = computed(() => isEditingPreset.value ? '保存为自定义策略' : '保存修改')
 
 const openEdit = s => {
   const clone = JSON.parse(JSON.stringify(s || {}))
   clone.snapshot = normalizeStrategySnapshot(clone.snapshot || { scope: 'all', selectedMetrics: [], filters: {} })
   clone.snapshot.searchQuery = ''
   clone.snapshot.filters = ensureFilterShape(clone.snapshot.filters || {})
+  if (!clone.isCustom && clone.name && !String(clone.name).includes('自定义')) {
+    clone.name = `${clone.name}（自定义）`
+  }
   editForm.value = clone
   editVisible.value = true
 }
@@ -501,13 +515,23 @@ const submitEdit = async () => {
     filters: ensureFilterShape(s.snapshot?.filters || {})
   })
   try {
-    await strategyStore.updateStrategy('select', s.id, {
-      name: s.name,
-      desc: s.desc,
-      snapshot: cleanSnap
-    })
+    if (s.isCustom) {
+      await strategyStore.updateStrategy('select', s.id, {
+        name: s.name,
+        desc: s.desc,
+        snapshot: cleanSnap
+      })
+    } else {
+      await strategyStore.addSelectStrategyFromSnapshot({
+        name: s.name,
+        desc: s.desc,
+        snapshot: cleanSnap,
+        isFavorite: false,
+        isCustom: true
+      })
+    }
     editVisible.value = false
-    ElMessage.success('已保存修改')
+    ElMessage.success(s.isCustom ? '已保存修改' : '已保存为自定义策略')
   } catch (error) {
     ElMessage.error(error?.message || '策略保存失败')
   }
@@ -754,6 +778,10 @@ const submitEdit = async () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.preset-edit-alert {
+  margin-bottom: 0;
 }
 
 .edit-two-col {
