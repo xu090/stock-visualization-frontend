@@ -29,6 +29,12 @@ from app.concept_service import (
 )
 from app.db import get_conn
 from app.db_indexes import ensure_query_indexes
+from app.favorite_stock_service import (
+    add_favorite_stock,
+    ensure_favorite_stocks_table,
+    fetch_favorite_stocks,
+    remove_favorite_stock,
+)
 from app.market_data_schema import ensure_stock_time_sharing_compat_view
 from app.news_service import fetch_concept_news, fetch_news_detail, fetch_news_feed, fetch_news_list
 from app.stock_names import backfill_stock_names
@@ -54,6 +60,10 @@ from app.strategy_service import (
 class QuoteRequest(BaseModel):
     codes: List[str]
     snapshotTs: int | None = None
+
+
+class FavoriteStockPayload(BaseModel):
+    code: str
 
 
 class SelectStrategyPayload(BaseModel):
@@ -261,6 +271,7 @@ async def lifespan(_app: FastAPI):
         await asyncio.to_thread(ensure_default_concepts)
     await asyncio.to_thread(ensure_strategies_table)
     await asyncio.to_thread(ensure_select_strategies)
+    await asyncio.to_thread(ensure_favorite_stocks_table)
     await asyncio.to_thread(ensure_stock_time_sharing_compat_view)
     await asyncio.to_thread(ensure_query_indexes)
 
@@ -296,6 +307,26 @@ def get_quotes(payload: QuoteRequest) -> dict:
 def search_stock_api(q: str, limit: int = 20) -> dict:
     rows = search_stocks(q, min(max(limit, 1), 50))
     return {"data": rows}
+
+
+@app.get("/api/favorite-stocks")
+def get_favorite_stocks_api() -> dict:
+    return {"data": fetch_favorite_stocks()}
+
+
+@app.post("/api/favorite-stocks")
+def post_favorite_stock_api(payload: FavoriteStockPayload) -> dict:
+    try:
+        row = add_favorite_stock(payload.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"data": row}
+
+
+@app.delete("/api/favorite-stocks/{code}")
+def delete_favorite_stock_api(code: str) -> dict:
+    remove_favorite_stock(code)
+    return {"ok": True}
 
 
 @app.get("/api/stocks/{code}")

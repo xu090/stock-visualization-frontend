@@ -2,8 +2,8 @@
   <div class="panel-card analysis-panel">
     <div class="panel-header">
       <div>
-        <div class="panel-title">概念均线结构分析</div>
-        <div class="panel-subtitle">先观察概念指数的均线形态，再对比成分股均线的同步与分化。</div>
+        <div class="panel-title">概念联动结构分析</div>
+        <div class="panel-subtitle">先观察概念当日走势，再对比成分股与概念指数的同步和分化。</div>
       </div>
     </div>
 
@@ -18,18 +18,18 @@
         </div>
       </div>
       <div class="summary-card">
-        <div class="summary-k">高同步个股</div>
+        <div class="summary-k">强联动个股</div>
         <div class="summary-v">{{ strongPositiveCount }} 只</div>
       </div>
       <div class="summary-card">
-        <div class="summary-k">背离个股</div>
-        <div class="summary-v">{{ divergentCount }} 只</div>
+        <div class="summary-k">低相关个股</div>
+        <div class="summary-v">{{ lowCorrelationCount }} 只</div>
       </div>
     </div>
 
     <div class="chart-row dual-ma-row">
       <div class="chart-card">
-        <div class="mini-title">概念指数与均线</div>
+        <div class="mini-title">概念走势与均线</div>
         <div ref="conceptTrendChartRef" class="chart trend-chart"></div>
       </div>
       <div class="chart-card">
@@ -170,8 +170,8 @@ const conceptDirectionLabel = computed(() => {
   return '震荡整理'
 })
 
-const strongPositiveCount = computed(() => analysisPayload.value.stocks.filter(item => item.correlationCategory === 'strong-positive').length)
-const divergentCount = computed(() => analysisPayload.value.stocks.filter(item => item.roleLabel === '背离股' || item.correlationCategory === 'negative').length)
+const strongPositiveCount = computed(() => analysisPayload.value.stocks.filter(item => Number(item.correlation) >= 0.6).length)
+const lowCorrelationCount = computed(() => analysisPayload.value.stocks.filter(item => Number(item.correlation) < 0.2).length)
 const conceptKlineName = computed(() => analysisPayload.value.name || props.concept?.name || '概念K线')
 const conceptMaWindows = [4, 8, 12, 16, 20]
 const conceptMaColors = {

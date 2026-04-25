@@ -96,8 +96,10 @@ export default {
         await Promise.allSettled([
           conceptStore.ensureLoaded(true),
           strategyStore.ensureLoaded(),
-          stockStore.loadStockBaseList()
+          stockStore.loadStockBaseList(),
+          stockStore.fetchFavoriteStocks()
         ])
+        await stockStore.hydrateMyStocks?.((conceptStore.myStockList || []).map(item => item?.code || item))
 
         const firstConcept = conceptStore.conceptList?.[0]
         const firstCodes = (firstConcept?.stockCodes || []).slice(0, 80)

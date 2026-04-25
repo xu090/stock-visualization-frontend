@@ -235,10 +235,10 @@ const metricDefs = [
   { key: 'change', label: '涨跌幅', tip: '概念当前涨跌幅' },
   { key: 'changeAmount', label: '涨跌额', tip: '概念当前涨跌额' },
   { key: 'amount', label: '成交额', tip: '概念成交额' },
-  { key: 'volRatio', label: '量比', tip: '量比>1 常见为放量' },
   { key: 'upRatio', label: '上涨占比', tip: '上涨股票占比' },
   { key: 'volatility', label: '波动率', tip: '数据库行情振幅均值' }
 ]
+const visibleMetricKeys = new Set(metricDefs.map(item => item.key))
 
 const currentAppliedSelectId = computed({
   get: () => homeFilter.appliedSelectStrategyId || null,
@@ -274,8 +274,6 @@ const emptySelectFilters = () => ({
   maxChangeAmount: null,
   minAmountY: null,
   maxAmountY: null,
-  minVolRatio: null,
-  maxVolRatio: null,
   minUpRatio: null,
   maxUpRatio: null,
   maxVolatility: null,
@@ -296,10 +294,17 @@ const normalizeStrategySnapshot = snap => {
   if (filters.maxChangeAmount == null && filters.maxNetInflowY != null) filters.maxChangeAmount = filters.maxNetInflowY
   delete filters.minNetInflowY
   delete filters.maxNetInflowY
+  delete filters.minVolRatio
+  delete filters.maxVolRatio
+  delete filters.minStrength
+  delete filters.minSpike5m
   return {
     ...base,
     selectedMetrics: Array.isArray(base.selectedMetrics)
-      ? base.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+      ? base.selectedMetrics
+        .map(key => (key === 'netInflow' ? 'changeAmount' : key))
+        .filter(key => visibleMetricKeys.has(key))
+        .slice(0, 3)
       : [],
     filters,
   }
@@ -370,12 +375,24 @@ const removeStrategySafe = async s => {
 
 const ensureFilterShape = filters => {
   const f = filters || {}
+  if (!('minChange' in f)) f.minChange = null
   if (!('maxChange' in f)) f.maxChange = null
+  if (f.minChangeAmount == null && f.minNetInflowY != null) f.minChangeAmount = f.minNetInflowY
+  if (f.maxChangeAmount == null && f.maxNetInflowY != null) f.maxChangeAmount = f.maxNetInflowY
   if (!('minChangeAmount' in f)) f.minChangeAmount = null
   if (!('maxChangeAmount' in f)) f.maxChangeAmount = null
+  if (!('minAmountY' in f)) f.minAmountY = null
   if (!('maxAmountY' in f)) f.maxAmountY = null
-  if (!('maxVolRatio' in f)) f.maxVolRatio = null
+  delete f.minNetInflowY
+  delete f.maxNetInflowY
+  delete f.minVolRatio
+  delete f.maxVolRatio
+  delete f.minStrength
+  delete f.minSpike5m
+  if (!('minUpRatio' in f)) f.minUpRatio = null
   if (!('maxUpRatio' in f)) f.maxUpRatio = null
+  if (!('maxVolatility' in f)) f.maxVolatility = null
+  if (!('maxDrawdown20d' in f)) f.maxDrawdown20d = null
   return f
 }
 
@@ -399,7 +416,6 @@ const buildFilterParts = f => {
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
   const b = range(f.minChangeAmount, f.maxChangeAmount, ''); if (b) parts.push(`涨跌额${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
-  const d = range(f.minVolRatio, f.maxVolRatio, ''); if (d) parts.push(`量比${d}`)
   const e = range(
     f.minUpRatio != null ? Math.round(f.minUpRatio * 100) : null,
     f.maxUpRatio != null ? Math.round(f.maxUpRatio * 100) : null,
@@ -456,7 +472,7 @@ const editForm = ref(null)
 
 const openEdit = s => {
   const clone = JSON.parse(JSON.stringify(s || {}))
-  clone.snapshot = clone.snapshot || { scope: 'all', selectedMetrics: [], filters: {} }
+  clone.snapshot = normalizeStrategySnapshot(clone.snapshot || { scope: 'all', selectedMetrics: [], filters: {} })
   clone.snapshot.searchQuery = ''
   clone.snapshot.filters = ensureFilterShape(clone.snapshot.filters || {})
   editForm.value = clone

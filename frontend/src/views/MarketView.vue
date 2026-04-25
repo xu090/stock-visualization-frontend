@@ -386,8 +386,8 @@ function initKlineChart() {
       },
     },
     grid: [
-      { left: 50, right: 20, top: 20, height: '62%' },
-      { left: 50, right: 20, top: '76%', height: '16%' },
+      { left: 50, right: 20, top: 20, height: '56%' },
+      { left: 50, right: 20, top: '70%', height: '14%' },
     ],
     xAxis: [
       {
@@ -406,6 +406,35 @@ function initKlineChart() {
     yAxis: [
       { scale: true },
       { gridIndex: 1, splitNumber: 2 },
+    ],
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1],
+        start: 0,
+        end: 100,
+      },
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1],
+        bottom: 4,
+        height: 24,
+        borderColor: '#d8e3f5',
+        fillerColor: 'rgba(64, 132, 255, .16)',
+        backgroundColor: 'rgba(245, 248, 255, .9)',
+        dataBackground: {
+          lineStyle: { color: '#9dbbf7' },
+          areaStyle: { color: 'rgba(64, 132, 255, .12)' },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: '#7da7f7' },
+          areaStyle: { color: 'rgba(64, 132, 255, .18)' },
+        },
+        handleSize: '80%',
+        handleStyle: { color: '#eef4ff', borderColor: '#a8bee8' },
+        moveHandleStyle: { color: '#dbe8ff' },
+        brushSelect: false,
+      },
     ],
     series: [
       {

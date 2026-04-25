@@ -19,9 +19,9 @@
         style="width: 130px"
       >
         <el-option label="相关性全部" value="" />
-        <el-option label="正相关" value="strong-positive" />
-        <el-option label="弱相关" value="weak-positive" />
-        <el-option label="不相关" value="neutral" />
+        <el-option label="强联动" value="strong-positive" />
+        <el-option label="弱联动" value="weak-positive" />
+        <el-option label="低相关" value="neutral" />
         <el-option label="负相关" value="negative" />
       </el-select>
       <el-select
@@ -34,15 +34,6 @@
         <el-option label="上涨" value="up" />
         <el-option label="下跌" value="down" />
         <el-option label="震荡" value="flat" />
-      </el-select>
-      <el-select
-        v-model="query.maPattern"
-        size="small"
-        placeholder="均线形态"
-        style="width: 150px"
-      >
-        <el-option label="均线形态全部" value="" />
-        <el-option v-for="item in maPatternOptions" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
       <el-button size="small" plain @click="resetFilters">重置筛选</el-button>
     </div>
@@ -136,17 +127,8 @@ const stockStore = useStockStore()
 const query = reactive({
   keyword: '',
   correlation: '',
-  direction: '',
-  maPattern: ''
+  direction: ''
 })
-
-const maPatternOptions = [
-  { label: '多头排列', value: 'bullish-stack' },
-  { label: '空头排列', value: 'bearish-stack' },
-  { label: '黄金交叉', value: 'golden-cross' },
-  { label: '死亡交叉', value: 'death-cross' },
-  { label: '均线缠绕', value: 'mixed' }
-]
 
 const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, {
   days: props.analysisWindow,
@@ -161,7 +143,6 @@ const filteredStocks = computed(() => {
     }
     if (query.correlation && item.correlationCategory !== query.correlation) return false
     if (query.direction && item.trendDirection !== query.direction) return false
-    if (query.maPattern && item.maPatternKey !== query.maPattern) return false
     return true
   })
 })
@@ -201,7 +182,6 @@ function resetFilters() {
   query.keyword = ''
   query.correlation = ''
   query.direction = ''
-  query.maPattern = ''
 }
 
 function normalizeCode(raw) {

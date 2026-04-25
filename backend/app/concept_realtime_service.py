@@ -201,26 +201,61 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
         WHERE latest.rn = 1
     """
     curve_sql = """
-        WITH concept_minutes AS (
+        WITH stock_rows AS (
             SELECT
                 st.ts,
-                AVG(st.open) AS open,
-                AVG(st.close) AS close,
-                AVG(st.high) AS high,
-                AVG(st.low) AS low,
-                AVG(st.previous_close) AS pre_close
-                ,
-                SUM(st.vol) AS volume
+                st.stock_code,
+                st.open,
+                st.close,
+                st.high,
+                st.low,
+                st.previous_close,
+                st.vol,
+                st.amount,
+                LAG(st.close) OVER (PARTITION BY st.stock_code ORDER BY st.ts ASC) AS prev_min_close,
+                AVG(NULLIF(st.amount, 0)) OVER (
+                    PARTITION BY st.stock_code
+                    ORDER BY st.ts ASC
+                    ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
+                ) AS weight_amount
             FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
               AND st.ts >= NOW() - INTERVAL '20 days'
               AND st.ts <= NOW()
-            GROUP BY st.ts
-            ORDER BY st.ts DESC
+        ),
+        stock_returns AS (
+            SELECT
+                *,
+                CASE
+                    WHEN prev_min_close > 0 THEN close / prev_min_close - 1
+                    WHEN previous_close > 0 THEN close / previous_close - 1
+                    ELSE NULL
+                END AS minute_return
+            FROM stock_rows
+        ),
+        concept_minutes AS (
+            SELECT
+                ts,
+                AVG(open) AS open,
+                AVG(close) AS close,
+                AVG(high) AS high,
+                AVG(low) AS low,
+                AVG(previous_close) AS pre_close,
+                SUM(vol) AS volume,
+                SUM(amount) AS amount,
+                AVG(minute_return) AS equal_return,
+                SUM(COALESCE(weight_amount, amount, 0) * minute_return)
+                    / NULLIF(SUM(CASE WHEN minute_return IS NULL THEN 0 ELSE COALESCE(weight_amount, amount, 0) END), 0)
+                    AS weighted_return,
+                SUM(CASE WHEN minute_return > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(minute_return), 0) AS up_ratio,
+                COUNT(minute_return) AS active_stock_count
+            FROM stock_returns
+            GROUP BY ts
+            ORDER BY ts DESC
             LIMIT %s
         )
-        SELECT ts, open, close, high, low, pre_close, volume
+        SELECT ts, open, close, high, low, pre_close, volume, amount, equal_return, weighted_return, up_ratio, active_stock_count
         FROM concept_minutes
         ORDER BY ts ASC
     """
@@ -266,6 +301,37 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
             return 0.0
         return round(((latest_close - base) / base) * 100, 2)
 
+    weighted_index = 1000.0
+    equal_index = 1000.0
+    indexed_curve = []
+    for item in curve_rows:
+        weighted_return = _safe_num(item.get("weighted_return"), 0.0)
+        equal_return = _safe_num(item.get("equal_return"), 0.0)
+        weighted_index *= 1 + weighted_return
+        equal_index *= 1 + equal_return
+        indexed_curve.append(
+            {
+                "ts": int(item["ts"].timestamp() * 1000) if item["ts"] else None,
+                "open": round(_safe_num(item.get("open"), 0.0), 4),
+                "close": round(_safe_num(item.get("close"), 0.0), 4),
+                "high": round(_safe_num(item.get("high"), 0.0), 4),
+                "low": round(_safe_num(item.get("low"), 0.0), 4),
+                "preClose": round(_safe_num(item.get("pre_close"), 0.0), 4),
+                "volume": _safe_num(item.get("volume"), 0.0),
+                "amount": _safe_num(item.get("amount"), 0.0),
+                "equalReturn": round(equal_return * 100, 4),
+                "weightedReturn": round(weighted_return * 100, 4),
+                "equalIndex": round(equal_index, 4),
+                "weightedIndex": round(weighted_index, 4),
+                "indexSpread": round(((weighted_index - equal_index) / equal_index) * 100, 4) if equal_index else 0.0,
+                "upRatio": round(_safe_num(item.get("up_ratio"), 0.0), 4),
+                "activeStockCount": item.get("active_stock_count") or 0,
+                "change": round(((_safe_num(item.get("close"), 0.0) - _safe_num(item.get("pre_close"), 0.0)) / _safe_num(item.get("pre_close"), 0.0)) * 100, 2)
+                if _safe_num(item.get("pre_close"), 0.0)
+                else 0.0,
+            }
+        )
+
     return {
         **concept,
         "change": change,
@@ -282,19 +348,8 @@ def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
         "stockCount": len(concept.get("stockCodes") or []),
         "activeStockCount": row.get("stock_count") or 0,
         "latestTs": int(row["latest_ts"].timestamp() * 1000) if row.get("latest_ts") else None,
-        "curve": [
-            {
-                "ts": int(item["ts"].timestamp() * 1000) if item["ts"] else None,
-                "open": round(_safe_num(item.get("open"), 0.0), 4),
-                "close": round(_safe_num(item.get("close"), 0.0), 4),
-                "high": round(_safe_num(item.get("high"), 0.0), 4),
-                "low": round(_safe_num(item.get("low"), 0.0), 4),
-                "preClose": round(_safe_num(item.get("pre_close"), 0.0), 4),
-                "volume": _safe_num(item.get("volume"), 0.0),
-                "change": round(((_safe_num(item.get("close"), 0.0) - _safe_num(item.get("pre_close"), 0.0)) / _safe_num(item.get("pre_close"), 0.0)) * 100, 2)
-                if _safe_num(item.get("pre_close"), 0.0)
-                else 0.0,
-            }
-            for item in curve_rows
-        ],
+        "weightedIndexChange": round(((weighted_index - 1000.0) / 1000.0) * 100, 2),
+        "equalIndexChange": round(((equal_index - 1000.0) / 1000.0) * 100, 2),
+        "indexSpread": round(((weighted_index - equal_index) / equal_index) * 100, 2) if equal_index else 0.0,
+        "curve": indexed_curve,
     }

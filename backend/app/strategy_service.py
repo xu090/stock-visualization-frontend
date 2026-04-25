@@ -20,7 +20,7 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
     SelectStrategySeed(
         id=1001,
         name="强势主线",
-        description="涨跌、资金、活跃度综合筛选（Pareto排序）",
+        description="涨跌幅、涨跌额、成交额综合筛选（Pareto排序）",
         is_favorite=True,
         enabled=True,
         is_custom=False,
@@ -32,7 +32,6 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
                 "minChange": 2,
                 "minChangeAmount": 0.1,
                 "minAmountY": 10,
-                "minVolRatio": 1.2,
                 "minUpRatio": 0.55,
             },
         },
@@ -40,14 +39,14 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
     SelectStrategySeed(
         id=1002,
         name="资金优先",
-        description="以涨跌额为核心，兼顾成交额",
+        description="以涨跌额为核心，兼顾成交额和板块扩散",
         is_favorite=True,
         enabled=True,
         is_custom=False,
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["changeAmount", "amount"],
+            "selectedMetrics": ["changeAmount", "amount", "upRatio"],
             "filters": {
                 "minChangeAmount": 0.3,
                 "minAmountY": 15,
@@ -57,19 +56,19 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
     ),
     SelectStrategySeed(
         id=1003,
-        name="放量突破",
-        description="量比 + 涨跌幅，筛出放量上攻",
+        name="放量上攻",
+        description="涨跌幅与成交额共同确认活跃上攻",
         is_favorite=False,
         enabled=True,
         is_custom=False,
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["volRatio", "change"],
+            "selectedMetrics": ["change", "amount", "changeAmount"],
             "filters": {
-                "minVolRatio": 1.6,
                 "minChange": 1,
                 "minAmountY": 8,
+                "minChangeAmount": 0,
             },
         },
     ),
@@ -93,14 +92,14 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
     SelectStrategySeed(
         id=1005,
         name="异动追踪",
-        description="短线异动热度为主，辅助量比",
+        description="短线涨幅与成交额配合，筛选活跃异动概念",
         is_favorite=False,
         enabled=True,
         is_custom=False,
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["change", "amount"],
+            "selectedMetrics": ["change", "amount", "volatility"],
             "filters": {
                 "minChange": 1.5,
                 "minAmountY": 6,
@@ -137,10 +136,10 @@ DEFAULT_SELECT_STRATEGIES: tuple[SelectStrategySeed, ...] = (
         snapshot={
             "scope": "all",
             "searchQuery": "",
-            "selectedMetrics": ["change", "volRatio"],
+            "selectedMetrics": ["change", "changeAmount", "amount"],
             "filters": {
                 "minChange": 1,
-                "minVolRatio": 1.3,
+                "minChangeAmount": 0,
                 "minAmountY": 6,
             },
         },

@@ -160,10 +160,10 @@ const metricDefs = [
   { key: 'change', label: '涨跌幅' },
   { key: 'changeAmount', label: '涨跌额' },
   { key: 'amount', label: '成交额' },
-  { key: 'volRatio', label: '量比' },
   { key: 'upRatio', label: '上涨占比' },
   { key: 'volatility', label: '波动率' }
 ]
+const visibleMetricKeys = new Set(metricDefs.map(item => item.key))
 
 const metricLabel = key => metricDefs.find(x => x.key === key)?.label || key
 
@@ -174,10 +174,17 @@ const normalizeStrategySnapshot = snap => {
   if (filters.maxChangeAmount == null && filters.maxNetInflowY != null) filters.maxChangeAmount = filters.maxNetInflowY
   delete filters.minNetInflowY
   delete filters.maxNetInflowY
+  delete filters.minVolRatio
+  delete filters.maxVolRatio
+  delete filters.minStrength
+  delete filters.minSpike5m
   return {
     ...base,
     selectedMetrics: Array.isArray(base.selectedMetrics)
-      ? base.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+      ? base.selectedMetrics
+        .map(key => (key === 'netInflow' ? 'changeAmount' : key))
+        .filter(key => visibleMetricKeys.has(key))
+        .slice(0, 3)
       : [],
     filters,
   }
@@ -204,7 +211,6 @@ const filtersTextFull = snap => {
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
   const b = range(f.minChangeAmount, f.maxChangeAmount, ''); if (b) parts.push(`涨跌额${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
-  const d = range(f.minVolRatio, f.maxVolRatio, ''); if (d) parts.push(`量比${d}`)
   const e = range(
     f.minUpRatio != null ? Math.round(f.minUpRatio * 100) : null,
     f.maxUpRatio != null ? Math.round(f.maxUpRatio * 100) : null,
@@ -255,8 +261,6 @@ const emptySelectFilters = () => ({
   maxChangeAmount: null,
   minAmountY: null,
   maxAmountY: null,
-  minVolRatio: null,
-  maxVolRatio: null,
   minUpRatio: null,
   maxUpRatio: null,
   maxVolatility: null,

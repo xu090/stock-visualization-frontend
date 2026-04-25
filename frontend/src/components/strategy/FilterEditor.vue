@@ -11,15 +11,6 @@
     </div>
 
     <div class="f-row">
-      <div class="f-name">涨跌额</div>
-      <div class="f-range">
-        <el-input-number v-model="filters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
-        <span class="sep">~</span>
-        <el-input-number v-model="filters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
-      </div>
-    </div>
-
-    <div class="f-row">
       <div class="f-name">成交额（亿）</div>
       <div class="f-range">
         <el-input-number v-model="filters.minAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≥" />
@@ -29,11 +20,11 @@
     </div>
 
     <div class="f-row">
-      <div class="f-name">量比</div>
+      <div class="f-name">涨跌额</div>
       <div class="f-range">
-        <el-input-number v-model="filters.minVolRatio" :min="0" :max="5" :step="0.1" controls-position="right" placeholder="≥" />
+        <el-input-number v-model="filters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
         <span class="sep">~</span>
-        <el-input-number v-model="filters.maxVolRatio" :min="0" :max="5" :step="0.1" controls-position="right" placeholder="≤" />
+        <el-input-number v-model="filters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
       </div>
     </div>
 

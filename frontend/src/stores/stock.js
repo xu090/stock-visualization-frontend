@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { useAlertCenterStore } from '@/stores/alertCenter'
-import { apiGet, apiPost } from '@/utils/api'
+import { apiDelete, apiGet, apiPost } from '@/utils/api'
 
 const QUOTE_TTL_MS = 30 * 1000
+const MY_STOCK_CODES_KEY = 'my_stock_codes'
+const DEFAULT_MY_STOCK_CODES = ['603501', '688167', '002371']
 
 function normalizeCode(raw) {
   if (raw == null) return ''
@@ -75,6 +77,29 @@ function buildQuoteMeta(ts) {
   }
 }
 
+function loadMyStockCodes() {
+  try {
+    const cached = localStorage.getItem(MY_STOCK_CODES_KEY)
+    if (!cached) return DEFAULT_MY_STOCK_CODES.slice()
+    const rows = JSON.parse(cached)
+    if (!Array.isArray(rows)) return DEFAULT_MY_STOCK_CODES.slice()
+    const codes = Array.from(new Set(rows.map(normalizeCode).filter(Boolean)))
+    return codes
+  } catch (e) {
+    console.warn('Failed to load favorite stock codes:', e)
+    return DEFAULT_MY_STOCK_CODES.slice()
+  }
+}
+
+function saveMyStockCodes(codes = []) {
+  try {
+    const normalized = Array.from(new Set((codes || []).map(normalizeCode).filter(Boolean)))
+    localStorage.setItem(MY_STOCK_CODES_KEY, JSON.stringify(normalized))
+  } catch (e) {
+    console.warn('Failed to save favorite stock codes:', e)
+  }
+}
+
 export const useStockStore = defineStore('stock', {
   state: () => {
     // 浠?localStorage 鍔犺浇缂撳瓨鐨勮偂绁ㄥ熀纭€鏁版嵁
@@ -92,7 +117,8 @@ export const useStockStore = defineStore('stock', {
       stockBaseList: cachedStockBaseList,
       stockBaseMap: buildBaseMap(cachedStockBaseList),
       quotesByCode: {},
-      myStockCodes: ['603501', '688167', '002371'],
+      myStockCodes: loadMyStockCodes(),
+      myStocksLoaded: false,
       _quoteTimer: null,
       stockBaseLoaded: cachedStockBaseList.length > 0
     }
@@ -260,6 +286,37 @@ export const useStockStore = defineStore('stock', {
       return rows || []
     },
 
+    async fetchFavoriteStocks() {
+      try {
+        const rows = await apiGet('/api/favorite-stocks')
+        const codes = Array.from(new Set((rows || []).map(row => normalizeCode(row?.code || row)).filter(Boolean)))
+        this.myStockCodes = codes
+        this.myStocksLoaded = true
+        saveMyStockCodes(this.myStockCodes)
+        ;(rows || []).forEach(row => {
+          if (row && typeof row === 'object') this.upsertBase(row)
+        })
+        return this.myStockCodes
+      } catch (error) {
+        console.warn('Failed to load favorite stock codes from database:', error)
+        this.myStocksLoaded = true
+        return this.myStockCodes
+      }
+    },
+
+    async hydrateMyStocks(codes = []) {
+      const merged = Array.from(new Set([
+        ...(this.myStockCodes || []),
+        ...(codes || [])
+      ].map(normalizeCode).filter(Boolean)))
+      this.myStockCodes = merged
+      saveMyStockCodes(this.myStockCodes)
+      await Promise.all(
+        merged.map(code => apiPost('/api/favorite-stocks', { code }).catch(() => null))
+      )
+      return this.myStockCodes
+    },
+
     startQuotePolling(codes = [], intervalMs = 3000) {
       this.stopQuotePolling()
       const uniq = Array.from(new Set((codes || []).map(normalizeCode).filter(Boolean)))
@@ -277,20 +334,40 @@ export const useStockStore = defineStore('stock', {
       }
     },
 
-    addStockToMyStocks(code) {
+    async addStockToMyStocks(code) {
       const c = normalizeCode(code)
       if (!c || this.myStockCodes.includes(c)) return
       this.myStockCodes.push(c)
+      saveMyStockCodes(this.myStockCodes)
       const alertCenter = useAlertCenterStore()
       alertCenter.captureStockBaseline(c)
+      try {
+        const row = await apiPost('/api/favorite-stocks', { code: c })
+        if (row) this.upsertBase(row)
+      } catch (error) {
+        this.myStockCodes = this.myStockCodes.filter(x => x !== c)
+        saveMyStockCodes(this.myStockCodes)
+        alertCenter.clearTargetState('stock', c)
+        console.warn('Failed to add favorite stock:', error)
+      }
     },
 
-    removeStockFromMyStocks(code) {
+    async removeStockFromMyStocks(code) {
       const c = normalizeCode(code)
       if (!c) return
+      const previous = this.myStockCodes.slice()
       this.myStockCodes = this.myStockCodes.filter(x => x !== c)
+      saveMyStockCodes(this.myStockCodes)
       const alertCenter = useAlertCenterStore()
       alertCenter.clearTargetState('stock', c)
+      try {
+        await apiDelete(`/api/favorite-stocks/${encodeURIComponent(c)}`)
+      } catch (error) {
+        this.myStockCodes = previous
+        saveMyStockCodes(this.myStockCodes)
+        alertCenter.captureStockBaseline(c)
+        console.warn('Failed to remove favorite stock:', error)
+      }
     }
   }
 })

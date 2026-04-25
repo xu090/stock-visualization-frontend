@@ -334,6 +334,15 @@
           </div>
 
           <div class="f-item">
+            <div class="f-label">涨跌额</div>
+            <div class="f-ctrl">
+              <el-input-number v-model="homeFilter.filters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
+              <span class="to">~</span>
+              <el-input-number v-model="homeFilter.filters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
+            </div>
+          </div>
+
+          <div class="f-item">
             <div class="f-label">上涨占比（%）</div>
             <div class="f-ctrl">
               <el-slider v-model="upRatioRangePct" range :min="0" :max="100" :step="5" show-input />
@@ -502,8 +511,8 @@ const ensureFilterShape = () => {
   if (!('minAmountY' in f)) f.minAmountY = null
   if (!('maxAmountY' in f)) f.maxAmountY = null
 
-  if (!('minVolRatio' in f)) f.minVolRatio = null
-  if (!('maxVolRatio' in f)) f.maxVolRatio = null
+  delete f.minVolRatio
+  delete f.maxVolRatio
 
   if (!('minUpRatio' in f)) f.minUpRatio = null
   if (!('maxUpRatio' in f)) f.maxUpRatio = null
@@ -541,8 +550,10 @@ const resetFilters = () => {
   f.maxChangeAmount = null
   f.minAmountY = null
   f.maxAmountY = null
-  f.minVolRatio = null
-  f.maxVolRatio = null
+  delete f.minNetInflowY
+  delete f.maxNetInflowY
+  delete f.minVolRatio
+  delete f.maxVolRatio
   f.minUpRatio = null
   f.maxUpRatio = null
   delete f.minStrength
@@ -678,7 +689,6 @@ function passFilters(item, f) {
   if (f.maxChange != null && change > Number(f.maxChange)) return false
   if (f.minChangeAmount != null && changeAmount < Number(f.minChangeAmount)) return false
   if (f.maxChangeAmount != null && changeAmount > Number(f.maxChangeAmount)) return false
-
   if (f.minAmountY != null && amountY < Number(f.minAmountY)) return false
   if (f.maxAmountY != null && amountY > Number(f.maxAmountY)) return false
 
@@ -845,6 +855,7 @@ const summaryFiltersText = computed(() => {
   }
 
   const a = range(f.minChange, f.maxChange, '%'); if (a) parts.push(`涨跌${a}`)
+  const b = range(f.minChangeAmount, f.maxChangeAmount, ''); if (b) parts.push(`涨跌额${b}`)
   const c = range(f.minAmountY, f.maxAmountY, '亿'); if (c) parts.push(`成交额${c}`)
 
   const e = range(

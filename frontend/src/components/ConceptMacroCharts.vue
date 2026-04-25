@@ -1,22 +1,26 @@
 <template>
   <section class="macro-wrap">
     <div class="macro-head">
-      <div class="macro-title">概念趋势总览</div>
+      <div class="macro-title">概念指数强度总览</div>
       <div class="macro-controls">
-        <el-select v-model="period" size="small" class="ctrl">
-          <el-option label="20日" value="20d" />
-          <el-option label="40日" value="40d" />
-          <el-option label="60日" value="60d" />
-        </el-select>
-
         <el-segmented v-model="curveMode" :options="modeOptions" size="small" />
+        <el-tooltip placement="bottom-end" effect="light" popper-class="macro-mode-tip">
+          <template #content>
+            <div class="mode-tip">
+              <div><b>加权指数</b>：按近几分钟成交额加权，交易越活跃的股票影响越大，用来看资金是否正在打这个概念。</div>
+              <div><b>等权指数</b>：所有成分股同等权重，用来看题材是否大面积上涨、有没有扩散。</div>
+              <div><b>龙头溢价</b>：加权指数减等权指数，用来看是不是主要由龙头或大成交股票在拉动。</div>
+            </div>
+          </template>
+          <button type="button" class="help-btn" aria-label="概念指数说明">?</button>
+        </el-tooltip>
       </div>
     </div>
 
     <div class="charts-grid">
       <el-card shadow="never" class="chart-card">
         <template #header>
-          <div >类别代表曲线</div>
+          <div>指数分组代表曲线</div>
         </template>
         <div ref="categoryChartRef" class="chart-box"></div>
         <el-table
@@ -26,12 +30,26 @@
           @row-click="onClickCategoryRow"
           :row-class-name="rowClassName"
         >
-          <el-table-column prop="name" label="类别" min-width="140" />
-          <el-table-column prop="count" label="数量" width="72" align="right" />
-          <el-table-column label="均值涨跌(%)" width="110" align="right">
+          <el-table-column prop="name" label="分组" min-width="116" />
+          <el-table-column prop="count" label="数量" width="58" align="right" />
+          <el-table-column label="加权(%)" width="82" align="right">
             <template #default="{ row }">
               <span :class="{ up: row.avgChange > 0, down: row.avgChange < 0 }">
                 {{ row.avgChange.toFixed(2) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="等权(%)" width="82" align="right">
+            <template #default="{ row }">
+              <span :class="{ up: row.avgEqualChange > 0, down: row.avgEqualChange < 0 }">
+                {{ row.avgEqualChange.toFixed(2) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="溢价" width="72" align="right">
+            <template #default="{ row }">
+              <span :class="{ up: row.avgSpread > 0, down: row.avgSpread < 0 }">
+                {{ row.avgSpread.toFixed(2) }}
               </span>
             </template>
           </el-table-column>
@@ -42,7 +60,7 @@
         <template #header>
           <div class="detail-head">
             <span>
-              类内曲线
+              组内概念指数
               <em v-if="selectedCategory">({{ selectedCategory.name }})</em>
             </span>
             <div class="detail-tools">
@@ -54,8 +72,10 @@
                 class="search"
               />
               <el-select v-model="detailSort" size="small" class="sort">
-                <el-option label="涨跌降序" value="changeDesc" />
-                <el-option label="涨跌升序" value="changeAsc" />
+                <el-option label="加权降序" value="changeDesc" />
+                <el-option label="等权降序" value="equalDesc" />
+                <el-option label="龙头溢价" value="spreadDesc" />
+                <el-option label="加权升序" value="changeAsc" />
                 <el-option label="名称排序" value="nameAsc" />
               </el-select>
             </div>
@@ -86,10 +106,6 @@ import { useConceptMacroStore } from '@/stores/conceptMacro'
 const macroStore = useConceptMacroStore()
 const { categories, categoryChartSeries, detailChartSeries, detailItems, selectedCategory } = storeToRefs(macroStore)
 
-const period = computed({
-  get: () => macroStore.period,
-  set: (v) => macroStore.setPeriod(v)
-})
 const curveMode = computed({
   get: () => macroStore.curveMode,
   set: (v) => { macroStore.curveMode = v }
@@ -104,8 +120,9 @@ const detailSort = computed({
 })
 
 const modeOptions = [
-  { label: '指数', value: 'index' },
-  { label: '超额收益', value: 'excess' }
+  { label: '加权指数', value: 'weighted' },
+  { label: '等权指数', value: 'equal' },
+  { label: '龙头溢价', value: 'spread' }
 ]
 
 const categoryChartRef = ref(null)
@@ -151,13 +168,13 @@ function buildCommonOption(title, series) {
 function renderCategoryChart() {
   if (!categoryChartRef.value) return
   if (!categoryChart) categoryChart = echarts.init(categoryChartRef.value)
-  categoryChart.setOption(buildCommonOption('类别曲线', categoryChartSeries.value), true)
+  categoryChart.setOption(buildCommonOption('分组指数', categoryChartSeries.value), true)
 }
 
 function renderDetailChart() {
   if (!detailChartRef.value) return
   if (!detailChart) detailChart = echarts.init(detailChartRef.value)
-  detailChart.setOption(buildCommonOption('概念曲线', detailChartSeries.value), true)
+  detailChart.setOption(buildCommonOption('概念指数', detailChartSeries.value), true)
 }
 
 function onClickCategoryRow(row) {
@@ -187,7 +204,7 @@ onMounted(async () => {
   window.addEventListener('resize', onResize)
 })
 
-watch([categories, period, curveMode], () => {
+watch([categories, curveMode], () => {
   macroStore.ensureSelectedCategory()
   renderCategoryChart()
   renderDetailChart()
@@ -237,8 +254,25 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.ctrl {
-  width: 100px;
+.help-btn {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #b9d8ff;
+  border-radius: 50%;
+  background: #eef6ff;
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 18px;
+  cursor: help;
+}
+
+.mode-tip {
+  width: 320px;
+  display: grid;
+  gap: 8px;
+  color: #303133;
+  line-height: 1.55;
 }
 
 .charts-grid {

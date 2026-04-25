@@ -138,13 +138,13 @@ def _series_pct_change(series: list[float | None], lookback: int | None = None) 
 
 
 def _classify_correlation(correlation: float) -> dict:
-    if correlation >= 0.8:
-        return {"key": "strong-positive", "label": "强相关", "type": "danger"}
-    if correlation >= 0.45:
-        return {"key": "weak-positive", "label": "中等相关", "type": "warning"}
-    if correlation >= 0.15:
-        return {"key": "neutral", "label": "弱相关", "type": "info"}
-    return {"key": "negative", "label": "低同步", "type": "success"}
+    if correlation >= 0.6:
+        return {"key": "strong-positive", "label": "强联动", "type": "danger"}
+    if correlation >= 0.2:
+        return {"key": "weak-positive", "label": "弱联动", "type": "warning"}
+    if correlation >= 0:
+        return {"key": "neutral", "label": "低相关", "type": "info"}
+    return {"key": "negative", "label": "负相关", "type": "success"}
 
 
 def _classify_trend_direction(normalized_close: list[float | None], ma20: list[float | None]) -> str:
@@ -201,7 +201,7 @@ def _classify_ma_pattern(series: dict[str, list[float | None]]) -> dict:
 
     if max_spread_pct <= 1.5:
         return {"key": "mixed", "label": "均线缠绕", "type": "info"}
-    return {"key": "mixed", "label": "均线分化", "type": "info"}
+    return {"key": "mixed", "label": "均线未共振", "type": "info"}
 
 
 def _format_trade_day(trade_day: date) -> str:
@@ -548,7 +548,7 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     tracking_ratios = [item["trackingErrorRatio"] for item in raw_metrics]
     excess_returns = [item["excessReturn5d"] for item in raw_metrics]
 
-    strong_corr_threshold = max(0.7, _quantile(correlations, 0.75, 0.7))
+    strong_corr_threshold = max(0.6, _quantile(correlations, 0.75, 0.6))
     weak_corr_threshold = min(0.2, _quantile(correlations, 0.25, 0.2))
     strong_agreement_threshold = max(0.6, _quantile(agreements, 0.75, 0.6))
     weak_agreement_threshold = min(0.45, _quantile(agreements, 0.25, 0.45))
@@ -569,8 +569,7 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
         if item["excessReturn5d"] >= leader_excess_threshold and item["correlation"] >= max(0.45, weak_corr_threshold):
             role_label = "领涨股"
         if (
-            item["correlation"] <= weak_corr_threshold
-            or item["agreementRatio"] <= weak_agreement_threshold
+            item["agreementRatio"] <= weak_agreement_threshold
             or (abs(item["excessReturn5d"]) >= divergent_excess_threshold and item["excessReturn5d"] < 0)
         ):
             role_label = "背离股"

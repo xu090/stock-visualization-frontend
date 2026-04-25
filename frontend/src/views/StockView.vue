@@ -41,10 +41,6 @@
               {{ conceptName }}
             </span>
           </span>
-          <span class="sub-item">
-            行业：
-            <span class="sub-strong">{{ stockSafe.industry || conceptName || '--' }}</span>
-          </span>
         </div>
 
         <div class="overview-bar">
@@ -53,20 +49,12 @@
             <span class="ov-v price">{{ formatNum(stockSafe.price, 2) }}</span>
           </div>
           <div class="ov-item">
-            <span class="ov-k">换手</span>
-            <span class="ov-v">{{ formatPct(stockSafe.turnover) }}</span>
-          </div>
-          <div class="ov-item">
             <span class="ov-k">振幅</span>
             <span class="ov-v">{{ formatPct(stockSafe.amplitude) }}</span>
           </div>
           <div class="ov-item">
             <span class="ov-k">市值</span>
             <span class="ov-v">{{ formatUnsignedMoney(stockSafe.mktCap) }}</span>
-          </div>
-          <div class="ov-item">
-            <span class="ov-k">PE/PB</span>
-            <span class="ov-v">{{ formatNum(stockSafe.pe, 1) }} / {{ formatNum(stockSafe.pb, 2) }}</span>
           </div>
         </div>
       </div>
@@ -270,23 +258,117 @@ function initKlineChart() {
   klineChart?.dispose()
   klineChart = echarts.init(klineChartRef.value)
 
+  const times = kline.value?.times || []
+  const klineData = kline.value?.data || []
+  const volumes = kline.value?.volumes || []
+
   klineChart.setOption({
-    tooltip: { trigger: 'axis' },
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      label: { backgroundColor: 'rgba(64, 64, 64, .85)' },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'line',
+        snap: true,
+        lineStyle: { color: '#c5ccd6', type: 'dashed' },
+      },
+      borderWidth: 0,
+      padding: [12, 14],
+      backgroundColor: 'rgba(255,255,255,.96)',
+      textStyle: { color: '#303133', fontSize: 12 },
+      extraCssText: 'box-shadow:0 8px 24px rgba(15,23,42,.18);border-radius:6px;',
+      formatter(params = []) {
+        const point = params[0] || {}
+        const index = Number(point.dataIndex)
+        if (!Number.isFinite(index)) return ''
+        const value = Array.isArray(klineData[index]) ? klineData[index] : []
+        const [open, close, low, high] = value
+        return `
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">${times[index] || point.axisValue || ''}</div>
+          <div style="display:flex;align-items:center;gap:7px;line-height:22px;margin-bottom:2px;">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#67c23a;"></span>
+            <b>${stockName.value || '股票'}</b>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;line-height:21px;min-width:150px;">
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>开盘价</span><b>${formatNum(open, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>收盘价</span><b>${formatNum(close, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>最低价</span><b>${formatNum(low, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>最高价</span><b>${formatNum(high, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>成交量</span><b>${formatUnsignedMoney(volumes[index])}</b></div>
+          </div>
+        `
+      },
+    },
     grid: [
-      { left: 54, right: 18, top: 18, height: '62%' },
-      { left: 54, right: 18, top: '74%', height: '18%' },
+      { left: 54, right: 18, top: 18, height: '56%' },
+      { left: 54, right: 18, top: '70%', height: '14%' },
     ],
     xAxis: [
-      { type: 'category', data: kline.value?.times || [], boundaryGap: true, axisLine: { onZero: false } },
-      { type: 'category', data: kline.value?.times || [], gridIndex: 1, axisTick: { show: false }, axisLabel: { show: false } },
+      {
+        type: 'category',
+        data: times,
+        boundaryGap: true,
+        axisLine: { onZero: false },
+        axisPointer: { show: true, type: 'line', lineStyle: { color: '#c5ccd6', type: 'dashed' } },
+      },
+      {
+        type: 'category',
+        data: times,
+        gridIndex: 1,
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        axisPointer: { show: true, type: 'line', lineStyle: { color: '#c5ccd6', type: 'dashed' } },
+      },
     ],
     yAxis: [
       { scale: true, splitLine: { lineStyle: { opacity: 0.35 } } },
       { gridIndex: 1, splitNumber: 2, splitLine: { show: false } },
     ],
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1],
+        start: 0,
+        end: 100,
+      },
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1],
+        bottom: 4,
+        height: 24,
+        borderColor: '#d8e3f5',
+        fillerColor: 'rgba(64, 132, 255, .16)',
+        backgroundColor: 'rgba(245, 248, 255, .9)',
+        dataBackground: {
+          lineStyle: { color: '#9dbbf7' },
+          areaStyle: { color: 'rgba(64, 132, 255, .12)' },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: '#7da7f7' },
+          areaStyle: { color: 'rgba(64, 132, 255, .18)' },
+        },
+        handleSize: '80%',
+        handleStyle: { color: '#eef4ff', borderColor: '#a8bee8' },
+        moveHandleStyle: { color: '#dbe8ff' },
+        brushSelect: false,
+      },
+    ],
     series: [
-      { type: 'candlestick', data: kline.value?.data || [] },
-      { type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: kline.value?.volumes || [], barWidth: 10 },
+      {
+        name: stockName.value || '股票',
+        type: 'candlestick',
+        data: klineData,
+      },
+      {
+        name: '成交量',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volumes,
+        barWidth: 10,
+      },
     ],
   })
 }

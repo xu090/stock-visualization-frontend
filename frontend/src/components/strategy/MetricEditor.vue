@@ -48,6 +48,7 @@
 </template>
 
 <script setup>
+/* global defineProps, defineEmits */
 import { computed } from 'vue'
 import Draggable from 'vuedraggable'
 import { ElMessage } from 'element-plus'
@@ -61,31 +62,37 @@ const props = defineProps({
 const emit = defineEmits(['update:selectedKeys'])
 
 const metricLabel = (k) => props.metricDefs.find(x => x.key === k)?.label || k
+const visibleMetricKeys = computed(() => new Set(props.metricDefs.map(item => item.key)))
+const normalizeMetricKey = key => (key === 'netInflow' ? 'changeAmount' : key)
+const normalizedSelectedKeys = computed(() => (props.selectedKeys || [])
+  .map(normalizeMetricKey)
+  .filter(key => visibleMetricKeys.value.has(key))
+  .slice(0, 3))
 
 /** 给 draggable 用的对象数组 */
 const selectedMetricObjs = computed({
-  get: () => (props.selectedKeys || []).filter(Boolean).map(k => ({ key: k, label: metricLabel(k) })),
+  get: () => normalizedSelectedKeys.value.map(k => ({ key: k, label: metricLabel(k) })),
   set: (objs) => {
     const keys = (Array.isArray(objs) ? objs : [])
-      .map(x => x?.key)
-      .filter(Boolean)
+      .map(x => normalizeMetricKey(x?.key))
+      .filter(key => visibleMetricKeys.value.has(key))
       .slice(0, 3)
     emit('update:selectedKeys', keys)
   }
 })
 
-const isSelected = (key) => (props.selectedKeys || []).includes(key)
+const isSelected = (key) => normalizedSelectedKeys.value.includes(key)
 
 const addMetric = (key) => {
   if (isSelected(key)) return
-  const arr = (props.selectedKeys || []).filter(Boolean).slice()
+  const arr = normalizedSelectedKeys.value.slice()
   if (arr.length >= 3) return ElMessage.warning('最多选择 3 个')
   arr.push(key)
   emit('update:selectedKeys', arr)
 }
 
 const removeMetric = (key) => {
-  emit('update:selectedKeys', (props.selectedKeys || []).filter(x => x !== key))
+  emit('update:selectedKeys', normalizedSelectedKeys.value.filter(x => x !== key))
 }
 </script>
 

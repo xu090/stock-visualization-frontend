@@ -2,14 +2,18 @@ import { defineStore } from 'pinia'
 
 const emptyFilters = () => ({
   minChange: null,
+  maxChange: null,
   minChangeAmount: null,
   maxChangeAmount: null,
   minAmountY: null,
-  minVolRatio: null,
+  maxAmountY: null,
   minUpRatio: null,
+  maxUpRatio: null,
   maxVolatility: null,
   maxDrawdown20d: null
 })
+
+const visibleMetricKeys = new Set(['change', 'changeAmount', 'amount', 'upRatio', 'volatility'])
 
 export const useHomeFilterStore = defineStore('homeFilter', {
   state: () => ({
@@ -24,13 +28,18 @@ export const useHomeFilterStore = defineStore('homeFilter', {
     _normalizeSnapshot(snapshot) {
       if (!snapshot) return snapshot
       const selectedMetrics = Array.isArray(snapshot.selectedMetrics)
-        ? snapshot.selectedMetrics.map(key => (key === 'netInflow' ? 'changeAmount' : key))
+        ? snapshot.selectedMetrics
+          .map(key => (key === 'netInflow' ? 'changeAmount' : key))
+          .filter(key => visibleMetricKeys.has(key))
+          .slice(0, 3)
         : []
       const rawFilters = { ...(snapshot.filters || {}) }
       if (rawFilters.minChangeAmount == null && rawFilters.minNetInflowY != null) rawFilters.minChangeAmount = rawFilters.minNetInflowY
       if (rawFilters.maxChangeAmount == null && rawFilters.maxNetInflowY != null) rawFilters.maxChangeAmount = rawFilters.maxNetInflowY
       delete rawFilters.minNetInflowY
       delete rawFilters.maxNetInflowY
+      delete rawFilters.minVolRatio
+      delete rawFilters.maxVolRatio
       delete rawFilters.minStrength
       delete rawFilters.minSpike5m
       return {
