@@ -1,4 +1,5 @@
 from app.db import get_conn
+from app.stock_market_caps import get_stock_market_cap
 
 
 def _safe_num(value, default: float = 0.0) -> float:
@@ -46,10 +47,12 @@ def _map_stock_row(row: dict) -> dict:
         "change": change_percent,
         "changeAmount": change_amount,
         "amount": _safe_num(row["amount"], 0.0),
+        "vol": row["vol"] or 0,
         "volume": row["vol"] or 0,
         "turnover": _safe_num(row["tor"], 0.0),
         "amplitude": _safe_num(row["udz"], 0.0),
         "volumeRatio": _safe_num(row["ftor"], 0.0),
+        "mktCap": get_stock_market_cap(row["code"]),
         "ts": int(row["ts"].timestamp() * 1000) if row["ts"] else None,
     }
 

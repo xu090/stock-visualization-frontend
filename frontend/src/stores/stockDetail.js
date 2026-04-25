@@ -29,6 +29,7 @@ function normalizeDetail(item = {}) {
     changePercent: asNum(item.changePercent ?? item.change, null),
     changeAmount: asNum(item.changeAmount, null),
     amount: asNum(item.amount, null),
+    vol: asNum(item.vol ?? item.volume, null),
     volume: asNum(item.volume, null),
     turnover: asNum(item.turnover, null),
     amplitude: asNum(item.amplitude, null),

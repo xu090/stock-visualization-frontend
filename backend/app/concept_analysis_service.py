@@ -267,6 +267,74 @@ def _fetch_concept_daily_rows(concept_id: str, lookback_days: int) -> list[dict]
             return cur.fetchall()
 
 
+def _fetch_concept_intraday_rows(concept_id: str) -> list[dict]:
+    sql = """
+        WITH latest_trade_day AS (
+            SELECT MAX(st.ts::date) AS trade_day
+            FROM stock_time_sharing_compat st
+            JOIN concept_stocks cs ON cs.stock_code = st.stock_code
+            WHERE cs.concept_id = %s
+              AND st.ts <= NOW()
+        )
+        SELECT
+            cs.stock_code,
+            COALESCE(s.name, cs.stock_code) AS stock_name,
+            st.ts,
+            st.close
+        FROM concept_stocks cs
+        LEFT JOIN stocks s ON s.code = cs.stock_code
+        JOIN stock_time_sharing_compat st ON st.stock_code = cs.stock_code
+        WHERE cs.concept_id = %s
+          AND st.ts::date = (SELECT trade_day FROM latest_trade_day)
+          AND st.ts <= NOW()
+        ORDER BY cs.stock_code ASC, st.ts ASC
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (concept_id, concept_id))
+            return cur.fetchall()
+
+
+def _build_intraday_return_context(concept_id: str) -> dict:
+    rows = _fetch_concept_intraday_rows(concept_id)
+    price_by_stock: dict[str, dict[Any, float]] = defaultdict(dict)
+    for row in rows:
+        code = str(row.get("stock_code") or "")
+        ts = row.get("ts")
+        close = _safe_float(row.get("close"), None)
+        if not code or ts is None or close is None or close <= 0:
+            continue
+        price_by_stock[code][ts] = close
+
+    returns_by_stock: dict[str, dict[Any, float]] = {}
+    for code, price_map in price_by_stock.items():
+        previous_close: float | None = None
+        returns: dict[Any, float] = {}
+        for ts in sorted(price_map):
+            close = price_map[ts]
+            if previous_close and previous_close > 0:
+                returns[ts] = (close / previous_close) - 1
+            previous_close = close
+        returns_by_stock[code] = returns
+
+    concept_return_by_ts: dict[Any, float] = {}
+    timestamps = sorted({ts for return_map in returns_by_stock.values() for ts in return_map})
+    for ts in timestamps:
+        values = [
+            return_map[ts]
+            for return_map in returns_by_stock.values()
+            if ts in return_map and math.isfinite(return_map[ts])
+        ]
+        if values:
+            concept_return_by_ts[ts] = _mean(values)
+
+    return {
+        "returnsByStock": returns_by_stock,
+        "conceptReturnByTs": concept_return_by_ts,
+        "pointCount": len(concept_return_by_ts),
+    }
+
+
 def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
@@ -406,8 +474,9 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     concept_close = concept_series["close"]
     concept_direction = _classify_trend_direction(concept_close, concept_series["ma20"])
     concept_change_pct = _round(_series_pct_change(concept_close), 2)
-    concept_returns_visible = [concept_return_by_day[day] for day in visible_days if day in concept_return_by_day]
-    concept_return_map_visible = {day: concept_return_by_day[day] for day in visible_days if day in concept_return_by_day}
+    intraday_context = _build_intraday_return_context(concept_id)
+    intraday_returns_by_stock = intraday_context["returnsByStock"]
+    intraday_concept_return_by_ts = intraday_context["conceptReturnByTs"]
 
     raw_metrics: list[dict] = []
     for code in sorted(stock_day_close_map):
@@ -427,9 +496,9 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
 
         overlap_stock_returns: list[float] = []
         overlap_concept_returns: list[float] = []
-        for day in visible_days:
-            stock_return = daily_returns_by_stock.get(code, {}).get(day)
-            concept_return = concept_return_map_visible.get(day)
+        for ts in sorted(intraday_returns_by_stock.get(code, {})):
+            stock_return = intraday_returns_by_stock.get(code, {}).get(ts)
+            concept_return = intraday_concept_return_by_ts.get(ts)
             if stock_return is None or concept_return is None:
                 continue
             overlap_stock_returns.append(stock_return)
@@ -543,6 +612,8 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
             "tradeDayCount": len(trade_days),
             "activeStockCount": len(stocks),
             "requestedWindow": window,
+            "correlationSource": "intraday",
+            "correlationPointCount": intraday_context["pointCount"],
         },
         "conceptDirection": concept_direction,
         "conceptChangePct": concept_change_pct,
@@ -556,7 +627,7 @@ def fetch_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     normalized_id = str(concept_id or "").strip()
     normalized_window = min(max(int(window or 30), 20), 90)
     return app_cache.get_or_set(
-        f"concept:analysis:v4:{normalized_id}:{normalized_window}",
-        ttl_seconds=900,
+        f"concept:analysis:v5-intraday:{normalized_id}:{normalized_window}",
+        ttl_seconds=60,
         factory=lambda: _build_concept_analysis(normalized_id, normalized_window),
     )

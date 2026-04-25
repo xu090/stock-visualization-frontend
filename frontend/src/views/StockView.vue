@@ -62,7 +62,7 @@
           </div>
           <div class="ov-item">
             <span class="ov-k">市值</span>
-            <span class="ov-v">{{ formatMoney(stockSafe.mktCap) }}</span>
+            <span class="ov-v">{{ formatUnsignedMoney(stockSafe.mktCap) }}</span>
           </div>
           <div class="ov-item">
             <span class="ov-k">PE/PB</span>
@@ -187,14 +187,13 @@ function formatPct(value) {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
-function formatMoney(value) {
+function formatUnsignedMoney(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return '--'
   const abs = Math.abs(n)
-  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
-  return `${sign}${abs.toFixed(0)}`
+  if (abs >= 1e8) return `${(abs / 1e8).toFixed(2)}亿`
+  if (abs >= 1e4) return `${(abs / 1e4).toFixed(0)}万`
+  return abs.toFixed(0)
 }
 
 function formatToYi(value, digits = 2) {
@@ -203,10 +202,15 @@ function formatToYi(value, digits = 2) {
   return `${n > 0 ? '+' : n < 0 ? '-' : ''}${Math.abs(n / 1e8).toFixed(digits)}`
 }
 
-function formatToWanInt(value) {
+function formatVolumeWan(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return '--'
-  return Math.round(n / 1e4).toLocaleString()
+  const wan = n / 1e4
+  const digits = Math.abs(wan) >= 100 ? 0 : 2
+  return wan.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
 }
 
 const detailList = computed(() => {
@@ -231,7 +235,7 @@ const detailList = computed(() => {
       value: formatPct(chgPct),
       style: Number(chgPct) >= 0 ? 'danger' : 'success',
     },
-    { label: '成交量(万)', value: formatToWanInt(vol), style: 'neutral' },
+    { label: '成交量(万)', value: formatVolumeWan(vol), style: 'neutral' },
     { label: '成交额(亿)', value: formatToYi(stock.amount), style: 'neutral' },
   ]
 })

@@ -15,6 +15,7 @@ Then edit `backend\.env` and fill in:
 
 - `POSTGRES_DSN`
 - `STOCK_NAME_MAPPING_FILE`
+- `STOCK_MARKET_CAP_MAPPING_FILE`
 - `AUTO_BOOTSTRAP_CONCEPTS`
 
 ## Real-time flow
@@ -277,6 +278,15 @@ Example response:
   }
 }
 ```
+
+To refresh stock market-cap data from AkShare, run:
+
+```powershell
+cd backend
+.venv\Scripts\python.exe scripts\update_stock_market_cap_mapping.py
+```
+
+The generated mapping file is read from `STOCK_MARKET_CAP_MAPPING_FILE` and fills `mktCap` in quote, stock detail, and concept constituent responses. The source is `akshare.stock_zh_a_spot_em()`, and the unit is yuan.
 
 ### 1. Concept overview
 

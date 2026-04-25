@@ -37,6 +37,7 @@ from app.stock_market_service import (
     fetch_stock_kline,
     fetch_stock_market_detail,
 )
+from app.stock_market_caps import get_stock_market_cap
 from app.stock_service import fetch_stock_detail, search_stocks
 from app.strategy_service import (
     bootstrap_select_strategies,
@@ -126,6 +127,7 @@ def map_quote_row(row: dict) -> dict:
         "change": change_percent,
         "changeAmount": change_amount,
         "amount": row["amount"],
+        "vol": row["vol"],
         "volume": row["vol"],
         "turnover": row["tor"],
         "amplitude": row["udz"],
@@ -135,7 +137,7 @@ def map_quote_row(row: dict) -> dict:
         "orderImbalance": None,
         "pe": None,
         "pb": None,
-        "mktCap": None,
+        "mktCap": get_stock_market_cap(row["stock_code"]),
         "score": None,
         "limitUp": bool(change_percent >= 9.8),
         "limitDown": bool(change_percent <= -9.8),

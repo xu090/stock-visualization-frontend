@@ -3,6 +3,7 @@ from typing import Any
 
 from app.cache import app_cache, invalidate_concept_cache
 from app.db import get_conn
+from app.stock_market_caps import get_stock_market_cap
 from app.stock_names import get_stock_name
 
 
@@ -154,6 +155,7 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
                 udf,
                 udz
             FROM stock_time_sharing_compat
+            WHERE ts <= NOW()
             ORDER BY stock_code, ts DESC
         )
         SELECT
@@ -631,7 +633,7 @@ def _fetch_concept_stocks_uncached(concept_id: str, snapshot_ts: int | None = No
                 "amplitude": _safe_num(row["udz"], 0.0),
                 "netInflow": None,
                 "mainInflow": None,
-                "mktCap": None,
+                "mktCap": get_stock_market_cap(row["stock_code"]),
                 "ts": int(row["ts"].timestamp() * 1000) if row["ts"] else None,
             }
         )
@@ -648,7 +650,6 @@ def fetch_concept_stocks(concept_id: str, snapshot_ts: int | None = None) -> lis
     )
 
 def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
-    # ????????????????????????????????? K ????
     sql = """
         WITH latest_trade_day AS (
             SELECT MAX(st.ts::date) AS trade_day
@@ -692,11 +693,15 @@ def fetch_concept_time_sharing(concept_id: str, limit: int = 120) -> list[dict]:
                 COUNT(*) AS stock_count
             FROM concept_rows
             GROUP BY ts
+        ),
+        limited AS (
+            SELECT *
+            FROM aggregated
             ORDER BY ts DESC
             LIMIT %s
         )
         SELECT *
-        FROM aggregated
+        FROM limited
         ORDER BY ts ASC
     """
     with get_conn() as conn:

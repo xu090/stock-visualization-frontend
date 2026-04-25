@@ -98,14 +98,14 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="amount" label="成交额" width="120" sortable="custom">
-        <template #default="{ row }">{{ formatMoney(row.amount) }}</template>
+      <el-table-column prop="volume" label="成交量" width="120" sortable="custom">
+        <template #default="{ row }">{{ formatUnsignedMoney(row.volume) }}</template>
       </el-table-column>
-      <el-table-column prop="turnover" label="换手" width="92" sortable="custom">
-        <template #default="{ row }">{{ formatTurnover(row.turnover) }}</template>
+      <el-table-column prop="amount" label="成交额" width="120" sortable="custom">
+        <template #default="{ row }">{{ formatUnsignedMoney(row.amount) }}</template>
       </el-table-column>
       <el-table-column prop="mktCap" label="市值" width="120" sortable="custom">
-        <template #default="{ row }">{{ formatMoney(row.mktCap) }}</template>
+        <template #default="{ row }">{{ formatUnsignedMoney(row.mktCap) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="120" align="center" fixed="right">
         <template #default>
@@ -247,26 +247,19 @@ function formatSignedNum(value) {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
 }
 
-function formatTurnover(value) {
-  const n = Number(value)
-  if (Number.isNaN(n)) return '--'
-  return `${n.toFixed(1)}%`
-}
-
 function formatCoeff(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   return n.toFixed(3)
 }
 
-function formatMoney(value) {
+function formatUnsignedMoney(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
   const abs = Math.abs(n)
-  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
-  return `${sign}${abs.toFixed(0)}`
+  if (abs >= 1e8) return `${(abs / 1e8).toFixed(2)}亿`
+  if (abs >= 1e4) return `${(abs / 1e4).toFixed(0)}万`
+  return abs.toFixed(0)
 }
 
 </script>

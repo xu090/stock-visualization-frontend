@@ -32,4 +32,5 @@ def get_env(name: str, default: str | None = None) -> str | None:
 
 POSTGRES_DSN = get_env("POSTGRES_DSN", "postgresql://postgres:postgres@127.0.0.1:5432/stock_app")
 STOCK_NAME_MAPPING_FILE = get_env("STOCK_NAME_MAPPING_FILE", r"e:\data_process\data_collection\stock_name_mapping.py")
+STOCK_MARKET_CAP_MAPPING_FILE = get_env("STOCK_MARKET_CAP_MAPPING_FILE", r"e:\data_process\data_collection\stock_market_cap_mapping.py")
 AUTO_BOOTSTRAP_CONCEPTS = str(get_env("AUTO_BOOTSTRAP_CONCEPTS", "true")).lower() in {"1", "true", "yes", "on"}

@@ -205,14 +205,13 @@ function formatPct(value) {
   return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`
 }
 
-function formatMoney(value) {
+function formatUnsignedMoney(value) {
   const num = Number(value)
   if (!Number.isFinite(num)) return '--'
   const abs = Math.abs(num)
-  const sign = num > 0 ? '+' : num < 0 ? '-' : ''
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
-  return `${sign}${abs.toFixed(0)}`
+  if (abs >= 1e8) return `${(abs / 1e8).toFixed(2)}亿`
+  if (abs >= 1e4) return `${(abs / 1e4).toFixed(0)}万`
+  return abs.toFixed(0)
 }
 
 function formatLargeNum(value) {
@@ -297,12 +296,12 @@ const detailList = computed(() => ([
   },
   {
     label: '成交量',
-    value: formatMoney(board.value.volume),
+    value: formatUnsignedMoney(board.value.volume),
     style: 'neutral',
   },
   {
     label: '成交额',
-    value: formatMoney(board.value.amount),
+    value: formatUnsignedMoney(board.value.amount),
     style: 'neutral',
   },
 ]))
