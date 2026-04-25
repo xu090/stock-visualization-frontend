@@ -2,6 +2,29 @@ import { defineStore } from 'pinia'
 import { apiGet } from '@/utils/api'
 import { useConceptStore } from '@/stores/concept'
 
+const DETAIL_TTL_MS = 10 * 60 * 1000
+const STATIC_TTL_MS = 30 * 60 * 1000
+const ANALYSIS_TTL_MS = 30 * 60 * 1000
+const inflight = new Map()
+
+function nowMs() {
+  return Date.now()
+}
+
+function isFresh(timestamp, ttl) {
+  const value = Number(timestamp)
+  return Number.isFinite(value) && value > 0 && nowMs() - value < ttl
+}
+
+function inflightOnce(key, factory) {
+  if (inflight.has(key)) return inflight.get(key)
+  const promise = Promise.resolve()
+    .then(factory)
+    .finally(() => inflight.delete(key))
+  inflight.set(key, promise)
+  return promise
+}
+
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
@@ -11,6 +34,7 @@ function normalizeCode(raw) {
 }
 
 function asNum(value, fallback = null) {
+  if (value == null || value === '') return fallback
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
 }
@@ -20,8 +44,8 @@ function normalizeDetail(item = {}) {
     id: String(item.id || ''),
     name: item.name || '',
     stockCount: asNum(item.stockCount, 0),
-    upCount: asNum(item.upCount, 0),
-    downCount: asNum(item.downCount, 0),
+    upCount: asNum(item.upCount, null),
+    downCount: asNum(item.downCount, null),
     avgChange: asNum(item.avgChange, 0),
     leaderStock: item.leaderStock || null,
     open: asNum(item.open, null),
@@ -58,6 +82,10 @@ function normalizeKline(item = {}) {
     times: Array.isArray(item.times) ? item.times : [],
     data: Array.isArray(item.data) ? item.data : [],
     volumes: Array.isArray(item.volumes) ? item.volumes : [],
+    amounts: Array.isArray(item.amounts) ? item.amounts.map(v => asNum(v, null)) : [],
+    changePercents: Array.isArray(item.changePercents) ? item.changePercents.map(v => asNum(v, null)) : [],
+    amplitudes: Array.isArray(item.amplitudes) ? item.amplitudes.map(v => asNum(v, null)) : [],
+    stockCounts: Array.isArray(item.stockCounts) ? item.stockCounts.map(v => asNum(v, null)) : [],
   }
 }
 
@@ -91,6 +119,8 @@ export const useConceptDetailStore = defineStore('conceptDetail', {
     capitalFlowById: {},
     klineByKey: {},
     stocksById: {},
+    analysisByKey: {},
+    fetchedAtByKey: {},
     loadingById: {},
     errorById: {},
   }),
@@ -104,43 +134,96 @@ export const useConceptDetailStore = defineStore('conceptDetail', {
       this.errorById = { ...this.errorById, [String(id)]: value || '' }
     },
 
-    async fetchDetail(id) {
-      const sid = String(id || '')
-      if (!sid) return null
-      const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/market-detail`)
-      const normalized = normalizeDetail(row)
-      const conceptStore = useConceptStore()
-      conceptStore.syncMarketDetail?.(normalized)
-      this.detailById = { ...this.detailById, [sid]: normalized }
-      return normalized
+    _markFetched(key) {
+      this.fetchedAtByKey = { ...this.fetchedAtByKey, [key]: nowMs() }
     },
 
-    async fetchCapitalFlow(id) {
-      const sid = String(id || '')
-      if (!sid) return null
-      const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/capital-flow-history`)
-      const normalized = normalizeCapitalFlow(row)
-      this.capitalFlowById = { ...this.capitalFlowById, [sid]: normalized }
-      return normalized
+    _isFresh(key, ttl) {
+      return isFresh(this.fetchedAtByKey[key], ttl)
     },
 
-    async fetchKline(id, period = '1m') {
+    async fetchDetail(id, options = {}) {
+      const sid = String(id || '')
+      if (!sid) return null
+      const key = `detail:${sid}`
+      if (!options.force && this.detailById[sid] && this._isFresh(key, DETAIL_TTL_MS)) {
+        return this.detailById[sid]
+      }
+      return inflightOnce(key, async () => {
+        const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/market-detail`)
+        const normalized = normalizeDetail(row)
+        const conceptStore = useConceptStore()
+        conceptStore.syncMarketDetail?.(normalized)
+        this.detailById = { ...this.detailById, [sid]: normalized }
+        this._markFetched(key)
+        return normalized
+      })
+    },
+
+    async fetchCapitalFlow(id, options = {}) {
+      const sid = String(id || '')
+      if (!sid) return null
+      const key = `capital:${sid}`
+      if (!options.force && this.capitalFlowById[sid] && this._isFresh(key, STATIC_TTL_MS)) {
+        return this.capitalFlowById[sid]
+      }
+      return inflightOnce(key, async () => {
+        const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/capital-flow-history`)
+        const normalized = normalizeCapitalFlow(row)
+        this.capitalFlowById = { ...this.capitalFlowById, [sid]: normalized }
+        this._markFetched(key)
+        return normalized
+      })
+    },
+
+    async fetchKline(id, period = '1m', options = {}) {
       const sid = String(id || '')
       if (!sid) return null
       const key = `${sid}:${period}`
-      const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/kline?period=${encodeURIComponent(period)}`)
-      const normalized = normalizeKline(row)
-      this.klineByKey = { ...this.klineByKey, [key]: normalized }
-      return normalized
+      const cacheKey = `kline:${key}`
+      if (!options.force && this.klineByKey[key] && this._isFresh(cacheKey, STATIC_TTL_MS)) {
+        return this.klineByKey[key]
+      }
+      return inflightOnce(cacheKey, async () => {
+        const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/kline?period=${encodeURIComponent(period)}`)
+        const normalized = normalizeKline(row)
+        this.klineByKey = { ...this.klineByKey, [key]: normalized }
+        this._markFetched(cacheKey)
+        return normalized
+      })
     },
 
-    async fetchStocks(id) {
+    async fetchStocks(id, options = {}) {
       const sid = String(id || '')
       if (!sid) return []
-      const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}`)
-      const normalized = normalizeStocks(row?.stocks || [])
-      this.stocksById = { ...this.stocksById, [sid]: normalized }
-      return normalized
+      const key = `stocks:${sid}`
+      if (!options.force && this.stocksById[sid] && this._isFresh(key, STATIC_TTL_MS)) {
+        return this.stocksById[sid]
+      }
+      return inflightOnce(key, async () => {
+        const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}`)
+        const normalized = normalizeStocks(row?.stocks || [])
+        this.stocksById = { ...this.stocksById, [sid]: normalized }
+        this._markFetched(key)
+        return normalized
+      })
+    },
+
+    async fetchAnalysis(id, window = 30, options = {}) {
+      const sid = String(id || '')
+      if (!sid) return null
+      const normalizedWindow = Math.min(Math.max(Number(window) || 30, 20), 90)
+      const key = `${sid}:${normalizedWindow}`
+      const cacheKey = `analysis:${key}`
+      if (!options.force && this.analysisByKey[key] && this._isFresh(cacheKey, ANALYSIS_TTL_MS)) {
+        return this.analysisByKey[key]
+      }
+      return inflightOnce(cacheKey, async () => {
+        const row = await apiGet(`/api/concepts/${encodeURIComponent(sid)}/ma-analysis?window=${encodeURIComponent(normalizedWindow)}`)
+        this.analysisByKey = { ...this.analysisByKey, [key]: row }
+        this._markFetched(cacheKey)
+        return row
+      })
     },
 
     async fetchAllForMarketView(id, period = '1m') {

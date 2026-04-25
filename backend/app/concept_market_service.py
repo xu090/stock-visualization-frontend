@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from app.cache import app_cache
 from app.concept_realtime_service import fetch_concept_macro, fetch_concept_realtime_snapshot
 from app.concept_service import (
     _concept_sector_name,
@@ -11,6 +12,7 @@ from app.concept_service import (
     fetch_concept_stocks,
     fetch_concept_time_sharing,
 )
+from app.db import get_conn
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -20,6 +22,24 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _table_exists(table_name: str) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass(%s) AS regclass", (f"public.{table_name}",))
+            row = cur.fetchone()
+    return bool(row and row["regclass"])
+
+
+def _concept_capital_flow_table(concept_id: str) -> str:
+    table_map = {
+        "semiconductor": "stock_capital_flow_semiconductor",
+        "intelligent_driving": "stock_capital_flow_intelligent_driving",
+        "robot": "stock_capital_flow_robot",
+        "military": "stock_capital_flow_military",
+    }
+    return table_map.get(str(concept_id or "").strip(), "")
 
 
 def _build_detail_fallback(concept_id: str) -> dict | None:
@@ -76,6 +96,15 @@ def _build_detail_fallback(concept_id: str) -> dict | None:
 
 
 def fetch_concept_market_detail(concept_id: str) -> dict | None:
+    normalized_id = str(concept_id or "").strip()
+    return app_cache.get_or_set(
+        f"concept:market-detail:{normalized_id}",
+        ttl_seconds=600,
+        factory=lambda: _fetch_concept_market_detail_uncached(normalized_id),
+    )
+
+
+def _fetch_concept_market_detail_uncached(concept_id: str) -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
         return None
@@ -83,27 +112,14 @@ def fetch_concept_market_detail(concept_id: str) -> dict | None:
     if snapshot is None:
         return _build_detail_fallback(concept_id)
 
-    # Keep concept counters aligned with the same latest per-stock data used by the
-    # component list and downstream stock pages.
-    stocks = fetch_concept_stocks(concept_id)
-    up_count = sum(1 for item in stocks if _safe_float(item.get("change")) > 0)
-    down_count = sum(1 for item in stocks if _safe_float(item.get("change")) < 0)
-    leader = max(stocks, key=lambda item: _safe_float(item.get("change"), -9999.0), default=None)
-    active_changes = [_safe_float(item.get("change")) for item in stocks if item.get("ts")]
-    avg_change = round(sum(active_changes) / len(active_changes), 2) if active_changes else round(_safe_float(snapshot.get("change")), 2)
-    latest_stock_ts = max((item.get("ts") for item in stocks if item.get("ts")), default=None)
     return {
         "id": concept_id,
         "name": snapshot.get("name") or concept["name"],
-        "stockCount": len(stocks) or int(snapshot.get("stockCount") or 0),
-        "upCount": up_count,
-        "downCount": down_count,
-        "avgChange": avg_change,
-        "leaderStock": {
-            "code": leader.get("code"),
-            "name": leader.get("name"),
-            "change": round(_safe_float(leader.get("change")), 2),
-        } if leader else None,
+        "stockCount": int(snapshot.get("stockCount") or len(concept.get("stockCodes") or [])),
+        "upCount": snapshot.get("upCount"),
+        "downCount": snapshot.get("downCount"),
+        "avgChange": round(_safe_float(snapshot.get("change")), 2),
+        "leaderStock": None,
         "open": round(_safe_float(snapshot.get("open")), 2),
         "close": round(_safe_float(snapshot.get("close")), 2),
         "high": round(_safe_float(snapshot.get("high")), 2),
@@ -116,7 +132,7 @@ def fetch_concept_market_detail(concept_id: str) -> dict | None:
         "netInflow": None,
         "inflowAmount": None,
         "outflowAmount": None,
-        "latestTs": latest_stock_ts or snapshot.get("latestTs"),
+        "latestTs": snapshot.get("latestTs"),
         "updatedAt": snapshot.get("updatedAt") or int(datetime.now().timestamp() * 1000),
     }
 
@@ -125,6 +141,40 @@ def fetch_concept_capital_flow_history(concept_id: str) -> dict | None:
     concept = fetch_concept_profile(concept_id)
     if concept is None:
         return None
+
+    table_name = _concept_capital_flow_table(concept_id)
+    if table_name and _table_exists(table_name):
+        sql = f"""
+            SELECT
+                flow.trade_date,
+                SUM(flow.inflow_amount) AS inflow_amount,
+                SUM(flow.outflow_amount) AS outflow_amount,
+                SUM(flow.net_inflow) AS net_inflow
+            FROM {table_name} flow
+            JOIN concept_stocks cs ON cs.stock_code = flow.code
+            WHERE cs.concept_id = %s
+            GROUP BY flow.trade_date
+            ORDER BY flow.trade_date DESC
+            LIMIT 7
+        """
+        try:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (concept_id,))
+                    rows = list(cur.fetchall())
+        except Exception:
+            rows = []
+
+        if rows:
+            rows.reverse()
+            return {
+                "conceptId": concept_id,
+                "derived": False,
+                "times": [row["trade_date"].strftime("%m-%d") if row.get("trade_date") else "" for row in rows],
+                "inflow": [_safe_float(row.get("inflow_amount"), None) for row in rows],
+                "outflow": [_safe_float(row.get("outflow_amount"), None) for row in rows],
+                "netInflow": [_safe_float(row.get("net_inflow"), None) for row in rows],
+            }
 
     return {
         "conceptId": concept_id,
@@ -152,6 +202,10 @@ def _compress_rows(rows: list[dict], step: int) -> list[dict]:
                 "high": max(_safe_float(item.get("high"), 0.0) for item in chunk),
                 "low": min(_safe_float(item.get("low"), 0.0) for item in chunk),
                 "volume": sum(_safe_float(item.get("volume"), 0.0) for item in chunk),
+                "amount": sum(_safe_float(item.get("amount"), 0.0) for item in chunk),
+                "changePercent": _safe_float(chunk[-1].get("changePercent"), 0.0),
+                "amplitude": _safe_float(chunk[-1].get("amplitude"), 0.0),
+                "stockCount": _safe_float(chunk[-1].get("stockCount"), 0.0),
             }
         )
     return grouped
@@ -174,6 +228,10 @@ def _aggregate_rows_by_minute(rows: list[dict]) -> list[dict]:
                 "low": min(_safe_float(item.get("low"), 0.0) for item in current_rows),
                 "volume": sum(_safe_float(item.get("volume"), 0.0) for item in current_rows),
                 "preClose": _safe_float(current_rows[0].get("preClose"), 0.0),
+                "amount": sum(_safe_float(item.get("amount"), 0.0) for item in current_rows),
+                "changePercent": _safe_float(current_rows[-1].get("changePercent"), 0.0),
+                "amplitude": _safe_float(current_rows[-1].get("amplitude"), 0.0),
+                "stockCount": _safe_float(current_rows[-1].get("stockCount"), 0.0),
             }
         )
 
@@ -207,6 +265,10 @@ def _normalize_sector_index_rows(rows: list[dict]) -> list[dict]:
                 "low": _safe_float(row.get("low"), 0.0),
                 "preClose": _safe_float(row.get("ycp"), 0.0),
                 "volume": _safe_float(row.get("vol"), 0.0),
+                "amount": _safe_float(row.get("amount"), 0.0),
+                "changePercent": 0.0,
+                "amplitude": 0.0,
+                "stockCount": 0.0,
             }
         )
     return normalized
@@ -269,4 +331,8 @@ def fetch_concept_kline(concept_id: str, period: str = "1m") -> dict | None:
             for item in compressed
         ],
         "volumes": [round(_safe_float(item.get("volume")), 2) for item in compressed],
+        "amounts": [round(_safe_float(item.get("amount")), 2) for item in compressed],
+        "changePercents": [round(_safe_float(item.get("changePercent")), 2) for item in compressed],
+        "amplitudes": [round(_safe_float(item.get("amplitude")), 2) for item in compressed],
+        "stockCounts": [int(_safe_float(item.get("stockCount"))) for item in compressed],
     }

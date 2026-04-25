@@ -219,20 +219,45 @@ def _fetch_concept_daily_rows(concept_id: str, lookback_days: int) -> list[dict]
             ORDER BY trade_day DESC
             LIMIT %s
         ),
-        daily_rows AS (
-            SELECT DISTINCT ON (cs.stock_code, st.ts::date)
+        intraday_rows AS (
+            SELECT
                 cs.stock_code,
                 COALESCE(s.name, cs.stock_code) AS stock_name,
                 st.ts::date AS trade_day,
+                st.ts,
+                st.open,
+                st.high,
+                st.low,
                 st.close
             FROM concept_stocks cs
             LEFT JOIN stocks s ON s.code = cs.stock_code
             JOIN stock_time_sharing_compat st ON st.stock_code = cs.stock_code
             WHERE cs.concept_id = %s
               AND st.ts::date IN (SELECT trade_day FROM trade_days)
-            ORDER BY cs.stock_code, st.ts::date, st.ts DESC
+        ),
+        daily_rows AS (
+            SELECT DISTINCT
+                stock_code,
+                stock_name,
+                trade_day,
+                FIRST_VALUE(open) OVER day_window AS open,
+                MAX(high) OVER day_window AS high,
+                MIN(low) OVER day_window AS low,
+                FIRST_VALUE(close) OVER day_window_desc AS close
+            FROM intraday_rows
+            WINDOW
+                day_window AS (
+                    PARTITION BY stock_code, trade_day
+                    ORDER BY ts ASC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ),
+                day_window_desc AS (
+                    PARTITION BY stock_code, trade_day
+                    ORDER BY ts DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                )
         )
-        SELECT stock_code, stock_name, trade_day, close
+        SELECT stock_code, stock_name, trade_day, open, high, low, close
         FROM daily_rows
         ORDER BY trade_day ASC, stock_code ASC
     """
@@ -264,21 +289,45 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
             "conceptDirection": "flat",
             "conceptChangePct": 0.0,
             "conceptMaPattern": {"key": "mixed", "label": "均线缠绕", "type": "info"},
-            "conceptSeries": {"dates": [], "close": [], "ma5": [], "ma10": [], "ma20": [], "ma30": []},
+            "conceptSeries": {
+                "dates": [],
+                "open": [],
+                "high": [],
+                "low": [],
+                "close": [],
+                "ma4": [],
+                "ma5": [],
+                "ma8": [],
+                "ma10": [],
+                "ma12": [],
+                "ma16": [],
+                "ma20": [],
+                "ma30": [],
+            },
             "stocks": [],
         }
 
     stock_name_map: dict[str, str] = {}
     stock_day_close_map: dict[str, dict[date, float]] = defaultdict(dict)
+    concept_ohlc_ratio_by_day: dict[date, dict[str, list[float]]] = defaultdict(lambda: {"open": [], "high": [], "low": []})
     trade_days_set: set[date] = set()
     for row in rows:
         code = str(row["stock_code"])
         trade_day = row["trade_day"]
+        open_price = _safe_float(row.get("open"), None)
+        high_price = _safe_float(row.get("high"), None)
+        low_price = _safe_float(row.get("low"), None)
         close = _safe_float(row.get("close"), None)
         if not code or trade_day is None or close is None or close <= 0:
             continue
         stock_name_map[code] = str(row.get("stock_name") or code)
         stock_day_close_map[code][trade_day] = close
+        if open_price is not None and open_price > 0:
+            concept_ohlc_ratio_by_day[trade_day]["open"].append(open_price / close)
+        if high_price is not None and high_price > 0:
+            concept_ohlc_ratio_by_day[trade_day]["high"].append(high_price / close)
+        if low_price is not None and low_price > 0:
+            concept_ohlc_ratio_by_day[trade_day]["low"].append(low_price / close)
         trade_days_set.add(trade_day)
 
     trade_days = sorted(trade_days_set)
@@ -319,13 +368,38 @@ def _build_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     visible_days = trade_days[-window:]
     visible_dates = [_format_trade_day(day) for day in visible_days]
     concept_close_all = [concept_index_by_day.get(day) for day in trade_days]
+    concept_open_all: list[float | None] = []
+    concept_high_all: list[float | None] = []
+    concept_low_all: list[float | None] = []
+    for day, close in zip(trade_days, concept_close_all):
+        if close is None:
+            concept_open_all.append(None)
+            concept_high_all.append(None)
+            concept_low_all.append(None)
+            continue
+        ratios = concept_ohlc_ratio_by_day.get(day, {})
+        open_value = close * _mean(ratios.get("open", [])) if ratios.get("open") else close
+        high_value = close * _mean(ratios.get("high", [])) if ratios.get("high") else max(open_value, close)
+        low_value = close * _mean(ratios.get("low", [])) if ratios.get("low") else min(open_value, close)
+        high_value = max(high_value, open_value, close)
+        low_value = min(low_value, open_value, close)
+        concept_open_all.append(round(open_value, 2))
+        concept_high_all.append(round(high_value, 2))
+        concept_low_all.append(round(low_value, 2))
     visible_start = len(trade_days) - len(visible_days)
     concept_series = {
         "dates": visible_dates,
+        "open": concept_open_all[visible_start:],
+        "high": concept_high_all[visible_start:],
+        "low": concept_low_all[visible_start:],
         "close": concept_close_all[visible_start:],
     }
     concept_series["ma5"] = _moving_average(concept_close_all, 5)[visible_start:]
+    concept_series["ma4"] = _moving_average(concept_close_all, 4)[visible_start:]
+    concept_series["ma8"] = _moving_average(concept_close_all, 8)[visible_start:]
     concept_series["ma10"] = _moving_average(concept_close_all, 10)[visible_start:]
+    concept_series["ma12"] = _moving_average(concept_close_all, 12)[visible_start:]
+    concept_series["ma16"] = _moving_average(concept_close_all, 16)[visible_start:]
     concept_series["ma20"] = _moving_average(concept_close_all, 20)[visible_start:]
     concept_series["ma30"] = _moving_average(concept_close_all, 30)[visible_start:]
 
@@ -482,7 +556,7 @@ def fetch_concept_analysis(concept_id: str, window: int = 30) -> dict | None:
     normalized_id = str(concept_id or "").strip()
     normalized_window = min(max(int(window or 30), 20), 90)
     return app_cache.get_or_set(
-        f"concept:analysis:{normalized_id}:{normalized_window}",
+        f"concept:analysis:v4:{normalized_id}:{normalized_window}",
         ttl_seconds=900,
         factory=lambda: _build_concept_analysis(normalized_id, normalized_window),
     )

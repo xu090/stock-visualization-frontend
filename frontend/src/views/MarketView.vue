@@ -34,18 +34,6 @@
                 <span class="ov-k">下跌</span>
                 <span class="ov-v down">{{ downCount }}</span>
               </div>
-              <div class="ov-item">
-                <span class="ov-k">更新时间</span>
-                <span class="ov-v">{{ quoteUpdatedText }}</span>
-              </div>
-              <div class="ov-item">
-                <span class="ov-k">平均涨跌</span>
-                <span class="ov-v" :class="{ up: avgChg > 0, down: avgChg < 0 }">
-                  <span v-if="avgChg > 0" class="arrow">↑</span>
-                  <span v-else-if="avgChg < 0" class="arrow">↓</span>
-                  {{ formatPct(avgChg) }}
-                </span>
-              </div>
               <div class="ov-item ov-leader" v-if="leaderStock">
                 <span class="ov-k">领涨</span>
                 <span class="ov-v leader">
@@ -73,6 +61,7 @@
           <div class="panel-card">
             <div class="panel-title">资金流向</div>
             <div ref="fundChartRef" class="chart chart-fund"></div>
+            <div v-if="!hasCapitalFlowData" class="chart-empty">暂无数据库资金流向数据</div>
           </div>
 
           <div class="panel-card">
@@ -88,14 +77,14 @@
           </div>
         </div>
         <ConceptAnalysisPanel
-          :key="`analysis-panel-${curId}-${analysisWindow}-${analysisData?.id || 'empty'}`"
+          :key="`analysis-panel-${curId}`"
           :concept="concept"
           :stocks="stocks"
           :analysis-data="analysisData"
           v-model:analysisWindow="analysisWindow"
         />
         <ConceptStockMergedTable
-          :key="`analysis-table-${curId}-${analysisWindow}-${analysisData?.id || 'empty'}`"
+          :key="`analysis-table-${curId}`"
           :concept="concept"
           :stocks="stocks"
           :analysis-data="analysisData"
@@ -114,7 +103,6 @@ import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
-import { apiGet } from '@/utils/api'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useConceptDetailStore } from '@/stores/conceptDetail'
@@ -143,6 +131,10 @@ const concept = computed(() => conceptStore.getConceptById?.(curId.value) || nul
 const title = computed(() => concept.value?.name || curId.value || '概念')
 const detail = computed(() => conceptDetailStore.detailById[curId.value] || null)
 const capitalFlow = computed(() => conceptDetailStore.capitalFlowById[curId.value] || null)
+const hasCapitalFlowData = computed(() => {
+  const row = capitalFlow.value
+  return Boolean(row?.times?.length && (row?.inflow?.length || row?.outflow?.length || row?.netInflow?.length))
+})
 const kline = computed(() => conceptDetailStore.klineByKey[`${curId.value}:${klinePeriod.value}`] || null)
 const detailStocks = computed(() => conceptDetailStore.stocksById[curId.value] || [])
 
@@ -184,23 +176,10 @@ const stocks = computed(() => {
   })
 })
 
-const quoteUpdatedTs = computed(() => {
-  const detailTs = Number(detail.value?.latestTs)
-  if (Number.isFinite(detailTs) && detailTs > 0) return detailTs
-  const conceptTs = Number(concept.value?.latestTs)
-  if (Number.isFinite(conceptTs) && conceptTs > 0) return conceptTs
-  const stockTs = stocks.value
-    .map(item => Number(item.updatedAt || item.ts))
-    .filter(Number.isFinite)
-  if (!stockTs.length) return null
-  return Math.max(...stockTs)
-})
-
-const quoteUpdatedText = computed(() => formatDateTime(quoteUpdatedTs.value))
-
 const analysisWindow = ref(30)
 const analysisData = ref(null)
 let analysisRequestSeq = 0
+const ANALYSIS_TTL_MS = 30 * 60 * 1000
 
 const isFav = computed(() => conceptStore.isConceptFavorite?.(curId.value) ?? false)
 async function toggleFav() {
@@ -236,42 +215,54 @@ function formatMoney(value) {
   return `${sign}${abs.toFixed(0)}`
 }
 
-function pad2(value) {
-  return String(value).padStart(2, '0')
-}
-
-function formatDateTime(ts) {
-  const value = Number(ts)
-  if (!Number.isFinite(value) || value <= 0) return '--'
-  const date = new Date(value)
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
+function formatLargeNum(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  const abs = Math.abs(num)
+  if (abs >= 1e8) return `${(num / 1e8).toFixed(2)}亿`
+  if (abs >= 1e4) return `${(num / 1e4).toFixed(2)}万`
+  return num.toFixed(0)
 }
 
 const stocksCount = computed(() => {
-  if (stocks.value.length) return stocks.value.length
   if (detail.value?.stockCount != null) return detail.value.stockCount
-  return detail.value?.stockCount ?? 0
+  if (concept.value?.stockCount != null) return concept.value.stockCount
+  return stockCodesNormalized.value.length
 })
-const upCount = computed(() => {
-  if (stocks.value.length) return stocks.value.filter(item => Number(item.change) > 0).length
-  if (detail.value?.upCount != null) return detail.value.upCount
-  return detail.value?.upCount ?? 0
+
+const countableStocks = computed(() => {
+  const rows = stocks.value || []
+  const codes = stockCodesNormalized.value
+  if (!codes.length || rows.length !== codes.length) return []
+  const withChanges = rows
+    .map(item => ({
+      ...item,
+      changeValue: Number(item.change),
+    }))
+    .filter(item => item.code && Number.isFinite(item.changeValue))
+  return withChanges.length === codes.length ? withChanges : []
 })
-const downCount = computed(() => {
-  if (stocks.value.length) return stocks.value.filter(item => Number(item.change) < 0).length
-  if (detail.value?.downCount != null) return detail.value.downCount
-  return detail.value?.downCount ?? 0
-})
-const avgChg = computed(() => {
-  const list = (stocks.value || []).map(item => Number(item.change)).filter(Number.isFinite)
-  if (Number.isFinite(Number(detail.value?.avgChange))) return Number(detail.value.avgChange)
-  if (!list.length) return 0
-  return list.reduce((sum, item) => sum + item, 0) / list.length
-})
+
+function countFromStocks(direction) {
+  const list = countableStocks.value
+  if (!list.length) return '--'
+  return list.filter(item => direction === 'up' ? item.changeValue > 0 : item.changeValue < 0).length
+}
+
+const upCount = computed(() => countFromStocks('up'))
+
+const downCount = computed(() => countFromStocks('down'))
+
 const leaderStock = computed(() => {
-  const list = (stocks.value || []).filter(item => Number.isFinite(Number(item.change)))
-  if (list.length) return [...list].sort((a, b) => Number(b.change) - Number(a.change))[0]
-  return detail.value?.leaderStock || null
+  if (detail.value?.leaderStock) return detail.value.leaderStock
+  const ranked = countableStocks.value
+    .map(item => ({
+      code: item.code,
+      name: item.name || item.code,
+      change: item.changeValue,
+    }))
+    .sort((a, b) => b.change - a.change)
+  return ranked[0] || null
 })
 
 const board = computed(() => ({
@@ -352,15 +343,66 @@ function initKlineChart() {
   klineChart?.dispose()
   klineChart = echarts.init(klineChartRef.value)
 
+  const times = kline.value?.times || []
+  const klineData = kline.value?.data || []
+  const volumes = kline.value?.volumes || []
+
   klineChart.setOption({
-    tooltip: { trigger: 'axis' },
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      label: { backgroundColor: 'rgba(64, 64, 64, .85)' },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'line',
+        snap: true,
+        lineStyle: { color: '#c5ccd6', type: 'dashed' },
+      },
+      borderWidth: 0,
+      padding: [12, 14],
+      backgroundColor: 'rgba(255,255,255,.96)',
+      textStyle: { color: '#303133', fontSize: 12 },
+      extraCssText: 'box-shadow:0 8px 24px rgba(15,23,42,.18);border-radius:6px;',
+      formatter(params = []) {
+        const point = params[0] || {}
+        const index = Number(point.dataIndex)
+        if (!Number.isFinite(index)) return ''
+        const value = Array.isArray(klineData[index]) ? klineData[index] : []
+        const [open, close, low, high] = value
+        return `
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">${times[index] || point.axisValue || ''}</div>
+          <div style="display:flex;align-items:center;gap:7px;line-height:22px;margin-bottom:2px;">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#67c23a;"></span>
+            <b>${title.value || '概念'}</b>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;line-height:21px;min-width:150px;">
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>开盘价</span><b>${formatNum(open, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>收盘价</span><b>${formatNum(close, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>最低价</span><b>${formatNum(low, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>最高价</span><b>${formatNum(high, 2)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:24px;"><span>成交量</span><b>${formatLargeNum(volumes[index])}</b></div>
+          </div>
+        `
+      },
+    },
     grid: [
       { left: 50, right: 20, top: 20, height: '62%' },
       { left: 50, right: 20, top: '76%', height: '16%' },
     ],
     xAxis: [
-      { type: 'category', data: kline.value?.times || [] },
-      { type: 'category', gridIndex: 1, data: kline.value?.times || [], axisLabel: { show: false } },
+      {
+        type: 'category',
+        data: times,
+        axisPointer: { show: true, type: 'line', lineStyle: { color: '#c5ccd6', type: 'dashed' } },
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: times,
+        axisLabel: { show: false },
+        axisPointer: { show: true, type: 'line', lineStyle: { color: '#c5ccd6', type: 'dashed' } },
+      },
     ],
     yAxis: [
       { scale: true },
@@ -368,14 +410,16 @@ function initKlineChart() {
     ],
     series: [
       {
+        name: title.value || '概念',
         type: 'candlestick',
-        data: kline.value?.data || [],
+        data: klineData,
       },
       {
+        name: '成交量',
         type: 'bar',
         xAxisIndex: 1,
         yAxisIndex: 1,
-        data: kline.value?.volumes || [],
+        data: volumes,
       },
     ],
   })
@@ -396,21 +440,33 @@ function stopQuotePolling() {
 async function refreshMinuteSnapshot() {
   const codes = stockCodesNormalized.value
   if (!curId.value || !codes.length) return
-  const latestDetail = await conceptDetailStore.fetchDetail(curId.value)
-  await stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null })
+  await stockStore.fetchQuotes(codes, { snapshotTs: detail.value?.latestTs || null })
 }
 
 async function fetchAnalysisData() {
   const requestId = curId.value
   const requestWindow = analysisWindow.value
   const requestSeq = ++analysisRequestSeq
-  analysisData.value = null
   if (!requestId) {
     analysisData.value = null
     return null
   }
+  const normalizedWindow = Math.min(Math.max(Number(requestWindow) || 30, 20), 90)
+  const cacheKey = `${requestId}:${normalizedWindow}`
+  const cached = conceptDetailStore.analysisByKey[cacheKey]
+  if (cached) {
+    analysisData.value = cached
+    const fetchedAt = Number(conceptDetailStore.fetchedAtByKey[`analysis:${cacheKey}`])
+    if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < ANALYSIS_TTL_MS) {
+      return cached
+    }
+  }
+  const hadPreviousForSameConcept = analysisData.value?.id && String(analysisData.value.id) === String(requestId)
+  if (!hadPreviousForSameConcept) {
+    analysisData.value = null
+  }
   try {
-    const row = await apiGet(`/api/concepts/${encodeURIComponent(requestId)}/ma-analysis?window=${encodeURIComponent(requestWindow)}`)
+    const row = await conceptDetailStore.fetchAnalysis(requestId, normalizedWindow)
     const stillCurrent =
       requestSeq === analysisRequestSeq &&
       String(curId.value) === String(requestId) &&
@@ -424,11 +480,25 @@ async function fetchAnalysisData() {
       requestSeq === analysisRequestSeq &&
       String(curId.value) === String(requestId) &&
       Number(analysisWindow.value) === Number(requestWindow)
-    if (stillCurrent) {
+    if (stillCurrent && !hadPreviousForSameConcept) {
       analysisData.value = null
     }
     return null
   }
+}
+
+function restoreCachedAnalysis() {
+  const normalizedWindow = Math.min(Math.max(Number(analysisWindow.value) || 30, 20), 90)
+  const cached = conceptDetailStore.analysisByKey[`${curId.value}:${normalizedWindow}`]
+  if (cached) {
+    analysisData.value = cached
+    return cached
+  }
+  if (analysisData.value?.id && String(analysisData.value.id) === String(curId.value)) {
+    return analysisData.value
+  }
+  analysisData.value = null
+  return null
 }
 
 function restartQuotePolling() {
@@ -440,17 +510,23 @@ function restartQuotePolling() {
 
 async function loadPageData() {
   if (!curId.value) return
-  analysisData.value = null
   const codes = stockCodesNormalized.value
+  restoreCachedAnalysis()
   await nextTick()
   const latestDetail = await conceptDetailStore.fetchDetail(curId.value)
-  await Promise.all([
+  const chartTasks = [
     conceptDetailStore.fetchCapitalFlow(curId.value),
     conceptDetailStore.fetchKline(curId.value, klinePeriod.value),
+  ]
+  await Promise.all(chartTasks)
+  const quoteTask = codes.length
+    ? stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null })
+    : Promise.resolve()
+  Promise.allSettled([
     conceptDetailStore.fetchStocks(curId.value),
     fetchAnalysisData(),
-    codes.length ? stockStore.fetchQuotes(codes, { snapshotTs: latestDetail?.latestTs || null }) : Promise.resolve(),
-  ])
+    quoteTask,
+  ]).catch(() => null)
   restartQuotePolling()
   initFundChart()
   initKlineChart()
@@ -683,6 +759,17 @@ onBeforeUnmount(() => {
 
 .chart-fund{
   height:240px;
+}
+
+.chart-empty{
+  margin-top:-132px;
+  height:96px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#909399;
+  font-size:13px;
+  pointer-events:none;
 }
 
 .chart-kline{

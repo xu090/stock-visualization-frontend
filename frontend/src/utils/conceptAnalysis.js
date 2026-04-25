@@ -11,9 +11,16 @@ function normalizeCode(raw) {
 function emptySeries() {
   return {
     dates: [],
+    open: [],
+    high: [],
+    low: [],
     close: [],
+    ma4: [],
     ma5: [],
+    ma8: [],
     ma10: [],
+    ma12: [],
+    ma16: [],
     ma20: [],
     ma30: []
   }
@@ -24,9 +31,16 @@ function normalizeSeries(series = {}) {
   const close = Array.isArray(series.close) ? series.close.map(value => (value == null ? null : asNum(value, null))) : []
   return {
     dates,
+    open: Array.isArray(series.open) ? series.open.map(value => (value == null ? null : asNum(value, null))) : [],
+    high: Array.isArray(series.high) ? series.high.map(value => (value == null ? null : asNum(value, null))) : [],
+    low: Array.isArray(series.low) ? series.low.map(value => (value == null ? null : asNum(value, null))) : [],
     close,
+    ma4: Array.isArray(series.ma4) ? series.ma4.map(value => (value == null ? null : asNum(value, null))) : [],
     ma5: Array.isArray(series.ma5) ? series.ma5.map(value => (value == null ? null : asNum(value, null))) : [],
+    ma8: Array.isArray(series.ma8) ? series.ma8.map(value => (value == null ? null : asNum(value, null))) : [],
     ma10: Array.isArray(series.ma10) ? series.ma10.map(value => (value == null ? null : asNum(value, null))) : [],
+    ma12: Array.isArray(series.ma12) ? series.ma12.map(value => (value == null ? null : asNum(value, null))) : [],
+    ma16: Array.isArray(series.ma16) ? series.ma16.map(value => (value == null ? null : asNum(value, null))) : [],
     ma20: Array.isArray(series.ma20) ? series.ma20.map(value => (value == null ? null : asNum(value, null))) : [],
     ma30: Array.isArray(series.ma30) ? series.ma30.map(value => (value == null ? null : asNum(value, null))) : [],
   }

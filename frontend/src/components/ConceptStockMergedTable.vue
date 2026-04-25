@@ -56,35 +56,7 @@
       @sort-change="onSortChange"
       :default-sort="defaultSort"
     >
-      <el-table-column prop="code" label="代码" width="92" />
-      <el-table-column prop="name" label="名称" min-width="120" />
-      <el-table-column prop="correlation" label="相关系数" width="110" sortable="custom">
-        <template #default="{ row }">{{ formatCoeff(row.correlation) }}</template>
-      </el-table-column>
-      <el-table-column label="相关性分类" width="118">
-        <template #default="{ row }">
-          <el-tag size="small" effect="plain" :type="row.correlationType">{{ row.correlationLabel }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="角色识别" width="116">
-        <template #default="{ row }">
-          <el-tag size="small" effect="light" :type="roleTagType(row.roleLabel)">{{ row.roleLabel }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="均线形态" width="124">
-        <template #default="{ row }">
-          <el-tag size="small" effect="plain" :type="row.maPatternType">{{ row.maPattern }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="走势" width="92">
-        <template #default="{ row }">
-          <span :class="{ up: row.trendDirection === 'up', down: row.trendDirection === 'down' }">{{ row.trendLabel }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="recentChangePct" label="近窗涨跌" width="110" sortable="custom">
-        <template #default="{ row }">{{ formatPct(row.recentChangePct) }}</template>
-      </el-table-column>
-      <el-table-column label="收藏" width="80" align="center">
+      <el-table-column label="收藏" width="72" align="center" fixed="left">
         <template #default="{ row }">
           <el-tooltip :content="isStockFavorite(row.code) ? '取消收藏' : '加入收藏'" placement="top">
             <el-icon
@@ -97,6 +69,16 @@
           </el-tooltip>
         </template>
       </el-table-column>
+      <el-table-column prop="code" label="代码" width="92" />
+      <el-table-column prop="name" label="名称" min-width="120" />
+      <el-table-column prop="correlation" label="相关系数" width="110" sortable="custom">
+        <template #default="{ row }">{{ formatCoeff(row.correlation) }}</template>
+      </el-table-column>
+      <el-table-column label="相关性分类" width="118">
+        <template #default="{ row }">
+          <el-tag size="small" effect="plain" :type="row.correlationType">{{ row.correlationLabel }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="price" label="最新" width="90" sortable="custom">
         <template #default="{ row }">{{ row.price?.toFixed?.(2) ?? row.price ?? '--' }}</template>
       </el-table-column>
@@ -106,6 +88,13 @@
             <span class="arrow" v-if="row.change > 0">↑</span>
             <span class="arrow" v-else-if="row.change < 0">↓</span>
             <span class="num">{{ formatPct(row.change) }}</span>
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="changeAmount" label="涨跌额" width="100" sortable="custom">
+        <template #default="{ row }">
+          <span :class="{ up: getChangeAmount(row) > 0, down: getChangeAmount(row) < 0 }">
+            {{ formatSignedNum(getChangeAmount(row)) }}
           </span>
         </template>
       </el-table-column>
@@ -185,14 +174,19 @@ function toNum(value) {
   return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY
 }
 
+function valueForSort(row, prop) {
+  if (prop === 'changeAmount') return toNum(getChangeAmount(row))
+  return toNum(row?.[prop])
+}
+
 const sortedStocks = computed(() => {
   const list = filteredStocks.value.slice()
   const { prop, order } = sortState.value
   if (!prop || !order) return list
   const dir = order === 'ascending' ? 1 : -1
   list.sort((a, b) => {
-    const av = toNum(a?.[prop])
-    const bv = toNum(b?.[prop])
+    const av = valueForSort(a, prop)
+    const bv = valueForSort(b, prop)
     if (av === bv) return 0
     return (av > bv ? 1 : -1) * dir
   })
@@ -236,6 +230,23 @@ function formatPct(value) {
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
+function getChangeAmount(row = {}) {
+  const direct = Number(row.changeAmount ?? row.changeValue ?? row.change_amount)
+  if (Number.isFinite(direct)) return direct
+  const price = Number(row.price ?? row.close)
+  const preClose = Number(row.preClose)
+  if (Number.isFinite(price) && Number.isFinite(preClose)) {
+    return price - preClose
+  }
+  return null
+}
+
+function formatSignedNum(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
+}
+
 function formatTurnover(value) {
   const n = Number(value)
   if (Number.isNaN(n)) return '--'
@@ -258,12 +269,6 @@ function formatMoney(value) {
   return `${sign}${abs.toFixed(0)}`
 }
 
-function roleTagType(role) {
-  if (role === '核心联动股') return 'danger'
-  if (role === '领涨股') return 'warning'
-  if (role === '背离股') return 'success'
-  return 'info'
-}
 </script>
 
 <style scoped>

@@ -71,6 +71,8 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
             AVG(lsa.tor) AS turnover,
             AVG(lsa.udz) AS volatility,
             SUM(CASE WHEN lsa.close > lsa.previous_close THEN 1 ELSE 0 END)::float / NULLIF(COUNT(lsa.stock_code), 0) AS up_ratio,
+            SUM(CASE WHEN lsa.close > lsa.previous_close THEN 1 ELSE 0 END) AS up_count,
+            SUM(CASE WHEN lsa.close < lsa.previous_close THEN 1 ELSE 0 END) AS down_count,
             SUM(CASE WHEN lsa.close >= lsa.previous_close * 1.098 THEN 1 ELSE 0 END) AS limit_up,
             SUM(CASE WHEN lsa.close <= lsa.previous_close * 0.902 THEN 1 ELSE 0 END) AS limit_down,
             MAX(lcm.latest_ts) AS latest_ts
@@ -122,6 +124,8 @@ def _build_concept_snapshot(row: dict) -> dict:
         "amount": amount,
         "turnover": round(turnover, 2),
         "upRatio": round(up_ratio, 2),
+        "upCount": int(row.get("up_count") or 0),
+        "downCount": int(row.get("down_count") or 0),
         "limitUp": row.get("limit_up"),
         "limitDown": row.get("limit_down"),
         "strength": None,

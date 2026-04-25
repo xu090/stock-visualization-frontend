@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { useAlertCenterStore } from '@/stores/alertCenter'
 import { apiGet, apiPost } from '@/utils/api'
 
+const QUOTE_TTL_MS = 30 * 1000
+
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
@@ -23,7 +25,8 @@ function normalizeQuote(item = {}) {
     change,
     changePercent: item.changePercent ?? change,
     volume: item.volume ?? item.vol ?? 0,
-    ts: item.ts || Date.now()
+    ts: item.ts || Date.now(),
+    _fetchedAt: Date.now(),
   }
 }
 
@@ -184,14 +187,23 @@ export const useStockStore = defineStore('stock', {
     async fetchQuotes(codes = [], options = {}) {
       const uniq = Array.from(new Set((codes || []).map(normalizeCode).filter(Boolean)))
       if (!uniq.length) return
+      const now = Date.now()
+      const targets = options?.force
+        ? uniq
+        : uniq.filter(code => {
+          const cached = this.quotesByCode[code]
+          const fetchedAt = Number(cached?._fetchedAt)
+          return !cached || !Number.isFinite(fetchedAt) || now - fetchedAt > QUOTE_TTL_MS
+        })
+      if (!targets.length) return
 
       const rows = await apiPost('/api/quotes', {
-        codes: uniq,
+        codes: targets,
         snapshotTs: options?.snapshotTs || null,
       })
       ;(rows || []).forEach(row => this.upsertQuote(row))
 
-      const missing = uniq.filter(code => !this.baseByCode[code] || this.baseByCode[code].name === code)
+      const missing = targets.filter(code => !this.baseByCode[code] || this.baseByCode[code].name === code)
       if (missing.length) await this.ensureStockProfiles(missing)
     },
 

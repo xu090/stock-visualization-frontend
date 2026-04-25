@@ -60,5 +60,6 @@ def invalidate_concept_cache(concept_id: str | None = None) -> None:
         app_cache.invalidate_prefix(f"concept:stocks:{normalized}:")
         app_cache.invalidate_prefix(f"concept:analysis:{normalized}:")
         app_cache.invalidate_prefix(f"concept:profile:{normalized}:")
+        app_cache.invalidate_prefix(f"concept:market-detail:{normalized}")
     else:
         app_cache.invalidate_prefix("concept:")

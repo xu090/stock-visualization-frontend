@@ -18,14 +18,12 @@
 
     <!-- 自选区：外层不滚动，列表内部滚动 -->
     <div class="fav-wrap">
-      <!-- 概念/行业列表 -->
+      <!-- 自选概念列表 -->
       <section class="fav-card" id="tour-fav-concept">
         <div class="fav-head">
           <div class="fav-title">
-            <el-tabs v-model="activeTopTab" class="top-tabs" stretch>
-              <el-tab-pane label="自选概念" name="concept" />
-              <el-tab-pane label="自选行业" name="industry" />
-            </el-tabs>
+            <el-icon class="fav-ic"><StarFilled /></el-icon>
+            <span class="concept-title-text">自选概念</span>
           </div>
         </div>
 
@@ -332,7 +330,6 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
-import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useAlertCenterStore } from '@/stores/alertCenter'
 import { HomeFilled, Tickets, StarFilled, Star, Delete, ArrowRight } from '@element-plus/icons-vue'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
@@ -342,45 +339,7 @@ const route = useRoute()
 const router = useRouter()
 const conceptStore = useConceptStore()
 const stockStore = useStockStore()
-const homeFilter = useHomeFilterStore()
 const alertCenter = useAlertCenterStore()
-
-/**
- * ✅ 顶部 tab：默认 concept
- * - 行业相关路由：/industry、/industry/:id => 自动切换为 industry
- * - 概念相关路由：/home、/concept/:id、/my-concept/:id => 自动切换为 concept
- */
-const activeTopTab = ref('concept')
-
-const isIndustryRoute = computed(() => {
-  const p = route.path || ''
-  return p === '/industry' || p.startsWith('/industry/')
-})
-
-watch(
-  isIndustryRoute,
-  (v) => {
-    activeTopTab.value = v ? 'industry' : 'concept'
-  },
-  { immediate: true }
-)
-
-/**
- * ✅ 点击 tab：跳到对应总览（让用户感受到“切换分类”）
- * - concept -> /home
- * - industry -> /industry
- */
-watch(activeTopTab, (tab) => {
-  const p = route.path || ''
-  if (tab === '/home') {
-    if (p !== '/home' && !p.startsWith('/home/')) router.push('/home')
-  } else {
-    // 回概念总览：用 /home（你现在总览页）
-    if (p !== '/home' && !p.startsWith('/concept/') && !p.startsWith('/my-concept/')) {
-      router.push('/home')
-    }
-  }
-})
 
 /** ✅ 自选概念统一从 conceptStore 实时快照读取，避免被多接口反复覆盖 */
 const overviewMap = computed(() => {
@@ -619,13 +578,11 @@ const saveConceptEdit = (conceptData) => {
 /** 总览按钮状态 */
 const isActiveTop = computed(() => {
   const p = route.path || ''
-  return (activeTopTab.value === 'concept' && p === '/home')
-    || (activeTopTab.value === 'industry' && p === '/industry')
+  return p === '/home'
 })
 
 const goTopOverview = () => {
-  if (activeTopTab.value === 'industry') router.push('/industry')
-  else router.push('/home')
+  router.push('/home')
 }
 
 /** ✅ 路由高亮判断 */
@@ -647,8 +604,7 @@ const isStockRouteActive = (code) => {
 const goConcept = (id) => {
   const sid = String(id)
   alertCenter.markTargetRead('concept', sid)
-  if (activeTopTab.value === 'industry') router.push(`/industry/${sid}`)
-  else router.push(`/concept/${sid}`) // ✅ 主路由
+  router.push(`/concept/${sid}`) // ✅ 主路由
   // else router.push(`/my-concept/${sid}`) // 兼容备选
 }
 
@@ -692,15 +648,6 @@ const fmtPrice = (v) => {
   if (Number.isNaN(n) || !n) return '--'
   return n.toFixed(2)
 }
-const fmtMoneySigned = (v) => {
-  const n = Number(v)
-  if (Number.isNaN(n)) return '--'
-  const abs = Math.abs(n)
-  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`
-  return `${sign}${abs.toFixed(0)}`
-}
 </script>
 
 <style scoped>
@@ -720,54 +667,6 @@ const fmtMoneySigned = (v) => {
   border-right: 0;
 }
 
-/* tabs */
-.top-tabbar{
-  padding: 10px 10px 0;
-  border-bottom: 1px solid rgba(0,0,0,.06);
-  background: #fff;
-
-}
-
-.top-tabs{
-  width: 100%;
-  flex: 1 1 auto;
-}
-.top-tabs :deep(.el-tabs__header){
-  margin: 0;
-  width: 100%;
-}
-.top-tabs :deep(.el-tabs__nav-wrap){
-  padding: 0;
-}
-.top-tabs :deep(.el-tabs__nav){
-  display: flex;
-  width: 100%;
-}
-.top-tabs :deep(.el-tabs__item){
-  flex: 0 0 50%;
-  max-width: 50%;
-  justify-content: center;
-  text-align: center;
-  padding: 8px 4px 9px;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1f2d3d;
-}
-.top-tabs :deep(.el-tabs__item.is-active){
-  color: #2f80ed;
-}
-.top-tabs :deep(.el-tabs__item:hover){
-  color: #2f80ed;
-}
-.top-tabs :deep(.el-tabs__active-bar){
-  height: 3px;
-  border-radius: 3px;
-  background-color: #409eff;
-}
-.top-tabs :deep(.el-tabs__nav-wrap::after){
-  height: 1px;
-}
 /* 快捷入口 */
 .quick{
   padding: 10px 10px 6px;
@@ -855,6 +754,7 @@ const fmtMoneySigned = (v) => {
   color: #1f2d3d;
 }
 .fav-ic{ color:#2f80ed; font-size: 16px; }
+.concept-title-text{ margin-left: 4px; }
 .stock-title-text{ margin-left: 4px; }
 
 .fav-badge{
