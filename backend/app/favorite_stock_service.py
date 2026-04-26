@@ -37,6 +37,23 @@ def ensure_favorite_stocks_table() -> None:
                 )
                 """
             )
+            cur.execute("ALTER TABLE favorite_stocks ADD COLUMN IF NOT EXISTS user_id BIGINT NULL")
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'favorite_stocks_pkey') THEN
+                        ALTER TABLE favorite_stocks DROP CONSTRAINT favorite_stocks_pkey;
+                    END IF;
+                END $$;
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_favorite_stocks_user_code
+                ON favorite_stocks (COALESCE(user_id, 0), stock_code)
+                """
+            )
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_favorite_stocks_created_at
@@ -69,7 +86,7 @@ def _map_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def fetch_favorite_stocks() -> list[dict[str, Any]]:
+def fetch_favorite_stocks(user_id: int | None = None) -> list[dict[str, Any]]:
     ensure_favorite_stocks_table()
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -81,14 +98,17 @@ def fetch_favorite_stocks() -> list[dict[str, Any]]:
                     s.name AS stock_name
                 FROM favorite_stocks fs
                 LEFT JOIN stocks s ON s.code = fs.stock_code
+                WHERE COALESCE(fs.user_id, 0) = COALESCE(%s, 0)
                 ORDER BY fs.created_at ASC, fs.stock_code ASC
                 """
+                ,
+                (user_id,),
             )
             rows = cur.fetchall()
     return [_map_row(row) for row in rows]
 
 
-def add_favorite_stock(code: str) -> dict[str, Any]:
+def add_favorite_stock(code: str, user_id: int | None = None) -> dict[str, Any]:
     normalized = normalize_stock_code(code)
     if not normalized:
         raise ValueError("stock code is required")
@@ -99,13 +119,13 @@ def add_favorite_stock(code: str) -> dict[str, Any]:
             _ensure_stock_row(cur, normalized)
             cur.execute(
                 """
-                INSERT INTO favorite_stocks (stock_code)
-                VALUES (%s)
-                ON CONFLICT (stock_code) DO UPDATE
+                INSERT INTO favorite_stocks (stock_code, user_id)
+                VALUES (%s, %s)
+                ON CONFLICT (COALESCE(user_id, 0), stock_code) DO UPDATE
                 SET stock_code = EXCLUDED.stock_code
                 RETURNING stock_code, created_at
                 """,
-                (normalized,),
+                (normalized, user_id),
             )
             row = cur.fetchone()
             cur.execute("SELECT name AS stock_name FROM stocks WHERE code = %s", (normalized,))
@@ -115,7 +135,7 @@ def add_favorite_stock(code: str) -> dict[str, Any]:
     return _map_row({**row, **stock_row})
 
 
-def remove_favorite_stock(code: str) -> bool:
+def remove_favorite_stock(code: str, user_id: int | None = None) -> bool:
     normalized = normalize_stock_code(code)
     if not normalized:
         return False
@@ -123,7 +143,10 @@ def remove_favorite_stock(code: str) -> bool:
     ensure_favorite_stocks_table()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM favorite_stocks WHERE stock_code = %s", (normalized,))
+            cur.execute(
+                "DELETE FROM favorite_stocks WHERE stock_code = %s AND COALESCE(user_id, 0) = COALESCE(%s, 0)",
+                (normalized, user_id),
+            )
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted

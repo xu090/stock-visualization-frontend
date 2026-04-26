@@ -397,6 +397,7 @@ import { useConceptDetailStore } from '@/stores/conceptDetail'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
 import { useNewsStore } from '@/stores/news'
+import { useAuthStore } from '@/stores/auth'
 
 import { autoStartHomeTourOnce } from '@/utils/homeTour'
 
@@ -406,6 +407,13 @@ const conceptDetailStore = useConceptDetailStore()
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
 const newsStore = useNewsStore()
+const authStore = useAuthStore()
+
+function requireLogin() {
+  if (authStore.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  return false
+}
 
 onMounted(() => {
   autoStartHomeTourOnce({ router })
@@ -643,7 +651,10 @@ const resetAll = () => {
 
 /** ✅ 保存策略 */
 const saveDialogVisible = ref(false)
-const openSaveStrategy = () => { saveDialogVisible.value = true }
+const openSaveStrategy = () => {
+  if (!requireLogin()) return
+  saveDialogVisible.value = true
+}
 
 const doSaveStrategy = async ({ name, desc }) => {
   if (typeof strategyStore.addSelectStrategyFromSnapshot !== 'function') {
@@ -902,12 +913,14 @@ const drawerVisible = ref(false)
 const editingConcept = ref(null)
 
 const openCreate = () => {
+  if (!requireLogin()) return
   editingConcept.value = null
   drawerVisible.value = true
 }
 
 /** 编辑 */
 const openEdit = (item) => {
+  if (!requireLogin()) return
   if (!item?.editable) return
   editingConcept.value = {
     id: item.id,

@@ -199,9 +199,13 @@ function goStock(row) {
 }
 
 const isStockFavorite = code => stockStore.isStockFavorite(code)
-const toggleStockFav = code => {
-  if (isStockFavorite(code)) stockStore.removeStockFromMyStocks(code)
-  else stockStore.addStockToMyStocks(code)
+const toggleStockFav = async code => {
+  try {
+    if (isStockFavorite(code)) await stockStore.removeStockFromMyStocks(code)
+    else await stockStore.addStockToMyStocks(code)
+  } catch {
+    // Store already shows the login prompt.
+  }
 }
 
 function formatPct(value) {

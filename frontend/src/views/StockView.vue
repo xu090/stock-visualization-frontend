@@ -151,11 +151,15 @@ const stockName = computed(() => stockSafe.value.name || '未知股票')
 
 const isFav = computed(() => stockStore.isStockFavorite(stockCode.value))
 
-function toggleFav() {
+async function toggleFav() {
   const code = stockCode.value
   if (!code) return
-  if (isFav.value) stockStore.removeStockFromMyStocks(code)
-  else stockStore.addStockToMyStocks(code)
+  try {
+    if (isFav.value) await stockStore.removeStockFromMyStocks(code)
+    else await stockStore.addStockToMyStocks(code)
+  } catch {
+    // Store already shows the login prompt.
+  }
 }
 
 function goBackConcept() {

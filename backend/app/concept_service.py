@@ -6,6 +6,8 @@ from app.db import get_conn
 from app.stock_market_caps import get_stock_market_cap
 from app.stock_names import get_stock_name
 
+DEFAULT_USER_FAVORITE_CONCEPT_IDS = ("semiconductor", "military", "robot")
+
 
 def _safe_num(value: Any, default: float = 0.0) -> float:
     if value is None:
@@ -49,6 +51,47 @@ def _normalize_stock_codes(codes: list[str] | None) -> list[str]:
         seen.add(code)
         normalized.append(code)
     return normalized
+
+
+def ensure_user_concept_tables() -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS user_id BIGINT NULL")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS concept_favorites (
+                    user_id BIGINT NULL,
+                    concept_id VARCHAR(128) NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_concept_favorites_user_concept
+                ON concept_favorites (COALESCE(user_id, 0), concept_id)
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_concepts_user_id ON concepts (user_id)")
+        conn.commit()
+
+
+def ensure_user_default_concept_favorites(user_id: int | None) -> None:
+    if user_id is None:
+        return
+    ensure_user_concept_tables()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for concept_id in DEFAULT_USER_FAVORITE_CONCEPT_IDS:
+                cur.execute(
+                    """
+                    INSERT INTO concept_favorites (user_id, concept_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (COALESCE(user_id, 0), concept_id) DO NOTHING
+                    """,
+                    (user_id, concept_id),
+                )
+        conn.commit()
 
 
 def _concept_sector_name(concept_id: str, concept_name: str | None = None) -> str:
@@ -323,11 +366,12 @@ def fetch_concept_overview() -> list[dict]:
     return [_build_concept_realtime_snapshot(row, sector_snapshot_map) for row in rows]
 
 
-def fetch_concept_detail(concept_id: str) -> dict | None:
+def fetch_concept_detail(concept_id: str, user_id: int | None = None) -> dict | None:
+    ensure_user_concept_tables()
     sql = """
         SELECT id, name, description, algorithm, editable, favorite
         FROM concepts
-        WHERE id = %s
+        WHERE id = %s AND (user_id IS NULL OR user_id = %s)
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -345,15 +389,30 @@ def fetch_concept_detail(concept_id: str) -> dict | None:
     }
 
 
-def fetch_concept_profile(concept_id: str) -> dict | None:
+def fetch_concept_profile(concept_id: str, user_id: int | None = None) -> dict | None:
+    ensure_user_concept_tables()
     sql = """
-        SELECT id, name, description, algorithm, editable, favorite, source
-        FROM concepts
-        WHERE id = %s
+        SELECT
+            c.id,
+            c.name,
+            c.description,
+            c.algorithm,
+            c.editable,
+            CASE
+                WHEN %s::bigint IS NULL THEN c.favorite
+                ELSE COALESCE(cf.concept_id IS NOT NULL, FALSE)
+            END AS favorite,
+            c.source
+        FROM concepts c
+        LEFT JOIN concept_favorites cf
+          ON cf.concept_id = c.id
+         AND COALESCE(cf.user_id, 0) = COALESCE(%s::bigint, 0)
+        WHERE c.id = %s
+          AND (c.user_id IS NULL OR c.user_id = %s)
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (concept_id,))
+            cur.execute(sql, (user_id, user_id, concept_id, user_id))
             row = cur.fetchone()
             if not row:
                 return None
@@ -361,9 +420,11 @@ def fetch_concept_profile(concept_id: str) -> dict | None:
     return _map_concept_row(row, stock_codes)
 
 
-def create_user_concept(payload: dict) -> dict:
+def create_user_concept(payload: dict, user_id: int | None = None) -> dict:
     concept_id = str(payload.get("id") or "").strip()
     name = str(payload.get("name") or "").strip()
+    if user_id is not None and concept_id and not concept_id.startswith(f"user-{user_id}-"):
+        concept_id = f"user-{user_id}-{concept_id}"
     if not concept_id:
         raise ValueError("concept id is required")
     if not name:
@@ -374,6 +435,7 @@ def create_user_concept(payload: dict) -> dict:
     algorithm = str(payload.get("algorithm") or "").strip()
     favorite = bool(payload.get("favorite", False))
 
+    ensure_user_concept_tables()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM concepts WHERE id = %s", (concept_id,))
@@ -384,12 +446,12 @@ def create_user_concept(payload: dict) -> dict:
             cur.execute(
                 """
                 INSERT INTO concepts (
-                    id, name, description, algorithm, editable, favorite, source, created_at, updated_at
+                    id, user_id, name, description, algorithm, editable, favorite, source, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, TRUE, %s, 'user', NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, TRUE, %s, 'user', NOW(), NOW())
                 RETURNING id, name, description, algorithm, editable, favorite, source
                 """,
-                (concept_id, name, description, algorithm, favorite),
+                (concept_id, user_id, name, description, algorithm, favorite),
             )
             row = cur.fetchone()
             _replace_concept_stocks(cur, concept_id, stock_codes)
@@ -399,16 +461,17 @@ def create_user_concept(payload: dict) -> dict:
     return _map_concept_row(row, stock_codes)
 
 
-def update_user_concept(concept_id: str, payload: dict) -> dict | None:
+def update_user_concept(concept_id: str, payload: dict, user_id: int | None = None) -> dict | None:
     concept_id = str(concept_id or "").strip()
     if not concept_id:
         return None
 
+    ensure_user_concept_tables()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, editable FROM concepts WHERE id = %s",
-                (concept_id,),
+                "SELECT id, editable, user_id FROM concepts WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
+                (concept_id, user_id),
             )
             existing = cur.fetchone()
             if not existing:
@@ -434,8 +497,24 @@ def update_user_concept(concept_id: str, payload: dict) -> dict | None:
                 fields.append("algorithm = %s")
                 params.append(str(payload.get("algorithm") or "").strip())
             if "favorite" in payload:
-                fields.append("favorite = %s")
-                params.append(bool(payload.get("favorite")))
+                favorite = bool(payload.get("favorite"))
+                if user_id is None:
+                    fields.append("favorite = %s")
+                    params.append(favorite)
+                elif favorite:
+                    cur.execute(
+                        """
+                        INSERT INTO concept_favorites (user_id, concept_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT (COALESCE(user_id, 0), concept_id) DO NOTHING
+                        """,
+                        (user_id, concept_id),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM concept_favorites WHERE user_id = %s AND concept_id = %s",
+                        (user_id, concept_id),
+                    )
 
             stock_codes: list[str] | None = None
             if "stockCodes" in payload:
@@ -451,10 +530,10 @@ def update_user_concept(concept_id: str, payload: dict) -> dict | None:
                     f"""
                     UPDATE concepts
                     SET {', '.join(fields)}
-                    WHERE id = %s
+                    WHERE id = %s AND (user_id IS NULL OR user_id = %s)
                     RETURNING id, name, description, algorithm, editable, favorite, source
                     """,
-                    tuple(params),
+                    tuple(params + [user_id]),
                 )
                 row = cur.fetchone()
             else:
@@ -472,18 +551,21 @@ def update_user_concept(concept_id: str, payload: dict) -> dict | None:
                 stock_codes = _fetch_concept_stock_codes(cur, concept_id)
         conn.commit()
 
+    if row and "favorite" in payload:
+        row = {**row, "favorite": bool(payload.get("favorite"))}
     invalidate_concept_cache(concept_id)
     return _map_concept_row(row, stock_codes)
 
 
-def delete_user_concept(concept_id: str) -> bool:
+def delete_user_concept(concept_id: str, user_id: int | None = None) -> bool:
     concept_id = str(concept_id or "").strip()
     if not concept_id:
         return False
 
+    ensure_user_concept_tables()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT editable FROM concepts WHERE id = %s", (concept_id,))
+            cur.execute("SELECT editable FROM concepts WHERE id = %s AND user_id = %s", (concept_id, user_id))
             row = cur.fetchone()
             if not row:
                 return False

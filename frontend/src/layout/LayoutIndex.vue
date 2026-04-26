@@ -46,6 +46,7 @@ import { useConceptStore } from '@/stores/concept'
 import { useNewsStore } from '@/stores/news'
 import { useStockStore } from '@/stores/stock'
 import { useStrategyStore } from '@/stores/strategy'
+import { useAuthStore } from '@/stores/auth'
 
 export default {
   name: 'LayoutIndex',
@@ -91,8 +92,10 @@ export default {
       const newsStore = useNewsStore()
       const strategyStore = useStrategyStore()
       const macroStore = useConceptMacroStore()
+      const authStore = useAuthStore()
 
       try {
+        await authStore.hydrate()
         await Promise.allSettled([
           conceptStore.ensureLoaded(true),
           strategyStore.ensureLoaded(),

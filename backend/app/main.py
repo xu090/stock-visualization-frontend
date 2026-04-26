@@ -3,10 +3,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from app.config import AUTO_BOOTSTRAP_CONCEPTS
+from app.auth_service import (
+    authenticate_user,
+    create_session,
+    create_user,
+    delete_session,
+    ensure_auth_tables,
+    optional_current_user,
+    require_current_user,
+    update_user_account,
+)
 from app.concept_analysis_service import fetch_concept_analysis
 from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
 from app.concept_market_service import (
@@ -25,6 +35,7 @@ from app.concept_service import (
     fetch_concept_profile,
     fetch_concept_stocks,
     fetch_concept_time_sharing,
+    ensure_user_concept_tables,
     update_user_concept,
 )
 from app.db import get_conn
@@ -64,6 +75,18 @@ class QuoteRequest(BaseModel):
 
 class FavoriteStockPayload(BaseModel):
     code: str
+
+
+class AuthPayload(BaseModel):
+    username: str
+    password: str
+
+
+class AuthUpdatePayload(BaseModel):
+    username: str | None = None
+    currentPassword: str | None = None
+    newPassword: str | None = None
+    confirmPassword: str | None = None
 
 
 class SelectStrategyPayload(BaseModel):
@@ -271,6 +294,8 @@ async def lifespan(_app: FastAPI):
         await asyncio.to_thread(ensure_default_concepts)
     await asyncio.to_thread(ensure_strategies_table)
     await asyncio.to_thread(ensure_select_strategies)
+    await asyncio.to_thread(ensure_auth_tables)
+    await asyncio.to_thread(ensure_user_concept_tables)
     await asyncio.to_thread(ensure_favorite_stocks_table)
     await asyncio.to_thread(ensure_stock_time_sharing_compat_view)
     await asyncio.to_thread(ensure_query_indexes)
@@ -297,6 +322,59 @@ def health() -> dict:
         return {"ok": False, "postgres": str(exc), "consumerEnabled": False}
 
 
+@app.post("/api/auth/register")
+def register_api(payload: AuthPayload) -> dict:
+    try:
+        user = create_user(payload.username, payload.password)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    token = create_session(user["id"])
+    return {"data": {"user": user, "token": token}}
+
+
+@app.post("/api/auth/login")
+def login_api(payload: AuthPayload) -> dict:
+    user = authenticate_user(payload.username, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = create_session(user["id"])
+    return {"data": {"user": user, "token": token}}
+
+
+@app.get("/api/auth/me")
+def me_api(user: dict | None = Depends(optional_current_user)) -> dict:
+    return {"data": {"user": user}}
+
+
+@app.patch("/api/auth/me")
+def update_me_api(payload: AuthUpdatePayload, user: dict = Depends(require_current_user)) -> dict:
+    if payload.newPassword is not None and payload.newPassword != payload.confirmPassword:
+        raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
+    try:
+        updated = update_user_account(
+            user_id=user["id"],
+            username=payload.username,
+            current_password=payload.currentPassword,
+            new_password=payload.newPassword,
+        )
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"data": {"user": updated}}
+
+
+@app.post("/api/auth/logout")
+def logout_api(user: dict = Depends(require_current_user), authorization: str | None = Header(default=None)) -> dict:
+    token = str(authorization or "").removeprefix("Bearer ").strip()
+    delete_session(token)
+    return {"ok": True, "data": {"user": user}}
+
+
 @app.post("/api/quotes")
 def get_quotes(payload: QuoteRequest) -> dict:
     rows = fetch_quotes_by_codes(payload.codes, snapshot_ts=payload.snapshotTs)
@@ -310,22 +388,22 @@ def search_stock_api(q: str, limit: int = 20) -> dict:
 
 
 @app.get("/api/favorite-stocks")
-def get_favorite_stocks_api() -> dict:
-    return {"data": fetch_favorite_stocks()}
+def get_favorite_stocks_api(user: dict | None = Depends(optional_current_user)) -> dict:
+    return {"data": fetch_favorite_stocks(user_id=user["id"] if user else None)}
 
 
 @app.post("/api/favorite-stocks")
-def post_favorite_stock_api(payload: FavoriteStockPayload) -> dict:
+def post_favorite_stock_api(payload: FavoriteStockPayload, user: dict = Depends(require_current_user)) -> dict:
     try:
-        row = add_favorite_stock(payload.code)
+        row = add_favorite_stock(payload.code, user_id=user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"data": row}
 
 
 @app.delete("/api/favorite-stocks/{code}")
-def delete_favorite_stock_api(code: str) -> dict:
-    remove_favorite_stock(code)
+def delete_favorite_stock_api(code: str, user: dict = Depends(require_current_user)) -> dict:
+    remove_favorite_stock(code, user_id=user["id"])
     return {"ok": True}
 
 
@@ -366,15 +444,15 @@ def get_stock_kline_api(code: str, period: str = "1m") -> dict:
 
 
 @app.get("/api/concepts/overview")
-def get_concepts_overview() -> dict:
-    rows = fetch_concept_overview()
+def get_concepts_overview(user: dict | None = Depends(optional_current_user)) -> dict:
+    rows = fetch_concept_overview(user_id=user["id"] if user else None)
     return {"data": rows}
 
 
 @app.post("/api/concepts")
-def post_concept(payload: ConceptPayload) -> dict:
+def post_concept(payload: ConceptPayload, user: dict = Depends(require_current_user)) -> dict:
     try:
-        row = create_user_concept(payload.model_dump())
+        row = create_user_concept(payload.model_dump(), user_id=user["id"])
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -383,16 +461,16 @@ def post_concept(payload: ConceptPayload) -> dict:
 
 
 @app.get("/api/concepts/{concept_id}/profile")
-def get_concept_profile_api(concept_id: str) -> dict:
-    row = fetch_concept_profile(concept_id)
+def get_concept_profile_api(concept_id: str, user: dict | None = Depends(optional_current_user)) -> dict:
+    row = fetch_concept_profile(concept_id, user_id=user["id"] if user else None)
     if row is None:
         raise HTTPException(status_code=404, detail="concept not found")
     return {"data": row}
 
 
 @app.get("/api/concepts/{concept_id}")
-def get_concept(concept_id: str) -> dict:
-    concept = fetch_concept_detail(concept_id)
+def get_concept(concept_id: str, user: dict | None = Depends(optional_current_user)) -> dict:
+    concept = fetch_concept_detail(concept_id, user_id=user["id"] if user else None)
     if concept is None:
         raise HTTPException(status_code=404, detail="concept not found")
     stocks = fetch_concept_stocks(concept_id)
@@ -400,9 +478,9 @@ def get_concept(concept_id: str) -> dict:
 
 
 @app.patch("/api/concepts/{concept_id}")
-def patch_concept(concept_id: str, payload: ConceptPatch) -> dict:
+def patch_concept(concept_id: str, payload: ConceptPatch, user: dict = Depends(require_current_user)) -> dict:
     try:
-        row = update_user_concept(concept_id, payload.model_dump(exclude_none=True))
+        row = update_user_concept(concept_id, payload.model_dump(exclude_none=True), user_id=user["id"])
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -413,9 +491,9 @@ def patch_concept(concept_id: str, payload: ConceptPatch) -> dict:
 
 
 @app.delete("/api/concepts/{concept_id}")
-def remove_concept(concept_id: str) -> dict:
+def remove_concept(concept_id: str, user: dict = Depends(require_current_user)) -> dict:
     try:
-        deleted = delete_user_concept(concept_id)
+        deleted = delete_user_concept(concept_id, user_id=user["id"])
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not deleted:
@@ -424,8 +502,8 @@ def remove_concept(concept_id: str) -> dict:
 
 
 @app.get("/api/concepts/{concept_id}/macro")
-def get_concept_macro_api(concept_id: str, limit: int = 240) -> dict:
-    row = fetch_concept_macro(concept_id, min(max(limit, 20), 1000))
+def get_concept_macro_api(concept_id: str, limit: int = 240, user: dict | None = Depends(optional_current_user)) -> dict:
+    row = fetch_concept_macro(concept_id, min(max(limit, 20), 1000), user_id=user["id"] if user else None)
     if row is None:
         raise HTTPException(status_code=404, detail="concept not found")
     return {"data": row}
@@ -518,34 +596,34 @@ def sync_db_indexes() -> dict:
 
 
 @app.get("/api/select-strategies")
-def get_select_strategies() -> dict:
-    return {"data": fetch_select_strategies()}
+def get_select_strategies(user: dict | None = Depends(optional_current_user)) -> dict:
+    return {"data": fetch_select_strategies(user_id=user["id"] if user else None)}
 
 
 @app.get("/api/select-strategies/{strategy_id}")
-def get_select_strategy(strategy_id: int) -> dict:
-    row = fetch_select_strategy(strategy_id)
+def get_select_strategy(strategy_id: int, user: dict | None = Depends(optional_current_user)) -> dict:
+    row = fetch_select_strategy(strategy_id, user_id=user["id"] if user else None)
     if row is None:
         raise HTTPException(status_code=404, detail="strategy not found")
     return {"data": row}
 
 
 @app.post("/api/select-strategies")
-def post_select_strategy(payload: SelectStrategyPayload) -> dict:
-    return {"data": create_select_strategy(payload.model_dump())}
+def post_select_strategy(payload: SelectStrategyPayload, user: dict = Depends(require_current_user)) -> dict:
+    return {"data": create_select_strategy(payload.model_dump(), user_id=user["id"])}
 
 
 @app.patch("/api/select-strategies/{strategy_id}")
-def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch) -> dict:
-    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True))
+def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: dict = Depends(require_current_user)) -> dict:
+    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True), user_id=user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="strategy not found")
     return {"data": row}
 
 
 @app.delete("/api/select-strategies/{strategy_id}")
-def remove_select_strategy(strategy_id: int) -> dict:
-    return {"ok": delete_select_strategy(strategy_id)}
+def remove_select_strategy(strategy_id: int, user: dict = Depends(require_current_user)) -> dict:
+    return {"ok": delete_select_strategy(strategy_id, user_id=user["id"])}
 
 
 @app.post("/api/admin/bootstrap/select-strategies")

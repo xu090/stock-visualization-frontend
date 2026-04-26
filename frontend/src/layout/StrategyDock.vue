@@ -145,6 +145,7 @@
       v-model="allDialogVisible"
       :select-strategies="strategyStore.selectStrategies"
       :current-applied-select-id="currentAppliedSelectId"
+      :logged-in="authStore.isLoggedIn"
       @toggle-favorite="onAllDialogToggleFavorite"
       @toggle-apply="onAllDialogToggleApply"
       @edit="onAllDialogEdit"
@@ -232,12 +233,20 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import { useStrategyStore } from '@/stores/strategy'
 import { useHomeFilterStore } from '@/stores/homeFilter'
+import { useAuthStore } from '@/stores/auth'
 import AllStrategyDialog from '@/components/strategy/AllStrategyDialog.vue'
 import MetricEditor from '@/components/strategy/MetricEditor.vue'
 import FilterEditor from '@/components/strategy/FilterEditor.vue'
 
 const strategyStore = useStrategyStore()
 const homeFilter = useHomeFilterStore()
+const authStore = useAuthStore()
+
+function requireLogin() {
+  if (authStore.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  return false
+}
 
 const metricDefs = [
   { key: 'change', label: '涨跌幅', tip: '概念当前涨跌幅' },
@@ -354,6 +363,7 @@ const toggleApply = s => {
 
 const toggleFavorite = async s => {
   if (!s) return
+  if (!requireLogin()) return
   try {
     const nextFavorite = !s.isFavorite
     await strategyStore.toggleFavorite('select', s.id)
@@ -364,6 +374,7 @@ const toggleFavorite = async s => {
 }
 
 const removeStrategySafe = async s => {
+  if (!requireLogin()) return
   try {
     await ElMessageBox.confirm(`确定删除「${s.name}」吗？`, '删除策略', {
       confirmButtonText: '删除',
@@ -467,6 +478,7 @@ const onAllDialogToggleApply = ({ strategy }) => toggleApply(strategy)
 const onAllDialogEdit = ({ strategy }) => openEdit(strategy)
 const onAllDialogRemove = ({ strategy }) => removeStrategySafe(strategy)
 const onAllDialogCreate = async ({ payload }) => {
+  if (!requireLogin()) return
   try {
     await strategyStore.addSelectStrategyFromSnapshot(payload)
     ElMessage.success('已新建策略')
@@ -482,6 +494,7 @@ const editDialogTitle = computed(() => isEditingPreset.value ? '基于预设新�
 const submitEditText = computed(() => isEditingPreset.value ? '保存为自定义策略' : '保存修改')
 
 const openEdit = s => {
+  if (!requireLogin()) return
   const clone = JSON.parse(JSON.stringify(s || {}))
   clone.snapshot = normalizeStrategySnapshot(clone.snapshot || { scope: 'all', selectedMetrics: [], filters: {} })
   clone.snapshot.searchQuery = ''
@@ -505,6 +518,7 @@ const resetEditFilters = () => {
 }
 
 const submitEdit = async () => {
+  if (!requireLogin()) return
   const s = editForm.value
   if (!s?.name?.trim()) {
     ElMessage.warning('请输入策略名称')

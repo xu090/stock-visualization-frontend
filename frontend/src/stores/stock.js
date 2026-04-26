@@ -1,10 +1,19 @@
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
 import { useAlertCenterStore } from '@/stores/alertCenter'
+import { useAuthStore } from '@/stores/auth'
 import { apiDelete, apiGet, apiPost } from '@/utils/api'
 
 const QUOTE_TTL_MS = 30 * 1000
 const MY_STOCK_CODES_KEY = 'my_stock_codes'
 const DEFAULT_MY_STOCK_CODES = ['603501', '688167', '002371']
+
+function requireLogin() {
+  const auth = useAuthStore()
+  if (auth.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  return false
+}
 
 function normalizeCode(raw) {
   if (raw == null) return ''
@@ -287,6 +296,12 @@ export const useStockStore = defineStore('stock', {
     },
 
     async fetchFavoriteStocks() {
+      const auth = useAuthStore()
+      if (!auth.isLoggedIn) {
+        this.myStockCodes = DEFAULT_MY_STOCK_CODES.slice()
+        this.myStocksLoaded = true
+        return this.myStockCodes
+      }
       try {
         const rows = await apiGet('/api/favorite-stocks')
         const codes = Array.from(new Set((rows || []).map(row => normalizeCode(row?.code || row)).filter(Boolean)))
@@ -311,9 +326,12 @@ export const useStockStore = defineStore('stock', {
       ].map(normalizeCode).filter(Boolean)))
       this.myStockCodes = merged
       saveMyStockCodes(this.myStockCodes)
-      await Promise.all(
-        merged.map(code => apiPost('/api/favorite-stocks', { code }).catch(() => null))
-      )
+      const auth = useAuthStore()
+      if (auth.isLoggedIn) {
+        await Promise.all(
+          merged.map(code => apiPost('/api/favorite-stocks', { code }).catch(() => null))
+        )
+      }
       return this.myStockCodes
     },
 
@@ -335,6 +353,7 @@ export const useStockStore = defineStore('stock', {
     },
 
     async addStockToMyStocks(code) {
+      if (!requireLogin()) return false
       const c = normalizeCode(code)
       if (!c || this.myStockCodes.includes(c)) return
       this.myStockCodes.push(c)
@@ -353,6 +372,7 @@ export const useStockStore = defineStore('stock', {
     },
 
     async removeStockFromMyStocks(code) {
+      if (!requireLogin()) return false
       const c = normalizeCode(code)
       if (!c) return
       const previous = this.myStockCodes.slice()

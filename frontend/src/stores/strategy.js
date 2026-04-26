@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/utils/api'
+
+const DEFAULT_FAVORITE_STRATEGY_IDS = new Set([1001, 1002, 1003])
+
+function requireLogin() {
+  const auth = useAuthStore()
+  if (auth.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  throw new Error('请先登录')
+}
 
 function normalizeStrategy(item = {}) {
   return {
@@ -35,7 +46,16 @@ export const useStrategyStore = defineStore('strategy', {
       this.error = ''
       try {
         const rows = await apiGet('/api/select-strategies')
-        this.selectStrategies = (rows || []).map(normalizeStrategy)
+        const auth = useAuthStore()
+        const list = (rows || []).map(normalizeStrategy)
+        this.selectStrategies = auth.isLoggedIn
+          ? list
+          : list
+            .filter(item => !item.isCustom)
+            .map(item => ({
+              ...item,
+              isFavorite: DEFAULT_FAVORITE_STRATEGY_IDS.has(Number(item.id))
+            }))
         this.loaded = true
         return this.selectStrategies
       } catch (err) {
@@ -52,6 +72,7 @@ export const useStrategyStore = defineStore('strategy', {
     },
 
     async addSelectStrategyFromSnapshot({ name, desc, snapshot, isFavorite = false, isCustom = true } = {}) {
+      if (!requireLogin()) return null
       const row = await apiPost('/api/select-strategies', {
         name: name?.trim() || '未命名策略',
         desc: desc?.trim() || '保存了一组筛选与排序条件',
@@ -64,16 +85,19 @@ export const useStrategyStore = defineStore('strategy', {
     },
 
     async updateStrategy(_type, id, patch) {
+      if (!requireLogin()) return null
       const row = await apiPatch(`/api/select-strategies/${id}`, patch || {})
       return this.upsertStrategy(row)
     },
 
     async removeStrategy(_type, id) {
+      if (!requireLogin()) return
       await apiDelete(`/api/select-strategies/${id}`)
       this.selectStrategies = this.selectStrategies.filter(s => Number(s.id) !== Number(id))
     },
 
     async toggleFavorite(_type, id) {
+      if (!requireLogin()) return
       const target = this.selectStrategies.find(s => Number(s.id) === Number(id))
       if (!target) return
       target.isFavorite = !target.isFavorite

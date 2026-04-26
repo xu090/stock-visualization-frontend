@@ -1,6 +1,31 @@
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
 import { useAlertCenterStore } from '@/stores/alertCenter'
+import { useAuthStore } from '@/stores/auth'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/utils/api'
+
+const DEFAULT_FAVORITE_CONCEPT_IDS = new Set(['semiconductor', 'military', 'robot'])
+
+function requireLogin() {
+  const auth = useAuthStore()
+  if (auth.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  return false
+}
+
+function requireLoginForWrite() {
+  if (requireLogin()) return true
+  throw new Error('请先登录')
+}
+
+function applyGuestConceptDefaults(list = []) {
+  const auth = useAuthStore()
+  if (auth.isLoggedIn) return list
+  return list.map(item => ({
+    ...item,
+    favorite: DEFAULT_FAVORITE_CONCEPT_IDS.has(normId(item.id))
+  }))
+}
 
 function normId(id) {
   return String(id ?? '').trim()
@@ -151,6 +176,8 @@ export const useConceptStore = defineStore('concept', {
     },
 
     userConcepts() {
+      const auth = useAuthStore()
+      if (!auth.isLoggedIn) return []
       return (this.conceptList || []).filter(c => !!c.editable)
     },
 
@@ -163,7 +190,9 @@ export const useConceptStore = defineStore('concept', {
     },
 
     conceptOverviewAll() {
-      return this.conceptList || []
+      const auth = useAuthStore()
+      const list = this.conceptList || []
+      return auth.isLoggedIn ? list : list.filter(c => !c.editable)
     }
   },
 
@@ -200,7 +229,7 @@ export const useConceptStore = defineStore('concept', {
       this.error = ''
       try {
         const rows = await apiGet('/api/concepts/overview')
-        this.conceptList = (rows || []).map(normalizeConcept)
+        this.conceptList = applyGuestConceptDefaults((rows || []).map(normalizeConcept))
         this.loaded = true
 
         // 持久化到 localStorage
@@ -264,6 +293,7 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async addConceptToMyConcept(conceptOrId) {
+      if (!requireLogin()) return false
       const id = normId(typeof conceptOrId === 'string' ? conceptOrId : conceptOrId?.id)
       const current = this.getConceptById(id)
       if (!current) return
@@ -274,6 +304,7 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async removeConceptFromMyConcept(conceptOrId) {
+      if (!requireLogin()) return false
       const id = normId(typeof conceptOrId === 'string' ? conceptOrId : conceptOrId?.id)
       const current = this.getConceptById(id)
       if (!current) return
@@ -292,6 +323,7 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async addUserConcept(concept) {
+      requireLoginForWrite()
       if (!concept?.id) return
       const row = await apiPost('/api/concepts', {
         id: normId(concept.id),
@@ -305,6 +337,7 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async updateUserConcept(concept) {
+      requireLoginForWrite()
       if (!concept?.id) return
       const id = normId(concept.id)
       const row = await apiPatch(`/api/concepts/${encodeURIComponent(id)}`, {
@@ -318,6 +351,7 @@ export const useConceptStore = defineStore('concept', {
     },
 
     async deleteUserConcept(id) {
+      requireLoginForWrite()
       const sid = normId(id)
       if (!sid) return
       await apiDelete(`/api/concepts/${encodeURIComponent(sid)}`)

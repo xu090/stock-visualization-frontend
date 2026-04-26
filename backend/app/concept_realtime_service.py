@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from app.concept_service import fetch_concept_profile
+from app.concept_service import ensure_user_concept_tables, fetch_concept_profile
 from app.db import get_conn
 
 
@@ -16,7 +16,8 @@ def _safe_num(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[dict]:
+def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None, user_id: int | None = None) -> list[dict]:
+    ensure_user_concept_tables()
     sql = """
         WITH latest_concept_minute AS (
             SELECT
@@ -55,7 +56,10 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
             c.description,
             c.algorithm,
             c.editable,
-            c.favorite,
+            CASE
+                WHEN %s::bigint IS NULL THEN c.favorite
+                ELSE COALESCE(cf.concept_id IS NOT NULL, FALSE)
+            END AS favorite,
             c.source,
             ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
                 FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
@@ -77,19 +81,23 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
             SUM(CASE WHEN lsa.close <= lsa.previous_close * 0.902 THEN 1 ELSE 0 END) AS limit_down,
             MAX(lcm.latest_ts) AS latest_ts
         FROM concepts c
+        LEFT JOIN concept_favorites cf
+         ON cf.concept_id = c.id
+         AND COALESCE(cf.user_id, 0) = COALESCE(%s::bigint, 0)
         LEFT JOIN concept_stocks cs ON cs.concept_id = c.id
         LEFT JOIN latest_concept_minute lcm ON lcm.concept_id = c.id
         LEFT JOIN latest_stock_before_anchor lsa
             ON lsa.concept_id = c.id
            AND lsa.stock_code = cs.stock_code
         WHERE (%s::text[] IS NULL OR c.id = ANY(%s::text[]))
-        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite, c.source
+          AND (c.user_id IS NULL OR c.user_id = %s)
+        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite, c.source, cf.concept_id
         ORDER BY c.favorite DESC, c.editable ASC, c.name ASC
     """
     ids = concept_ids if concept_ids else None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (ids, ids))
+            cur.execute(sql, (user_id, user_id, ids, ids, user_id))
             return cur.fetchall()
 
 
@@ -142,19 +150,19 @@ def _build_concept_snapshot(row: dict) -> dict:
     }
 
 
-def fetch_concept_overview() -> list[dict]:
-    return [_build_concept_snapshot(row) for row in _fetch_concept_aggregate_rows()]
+def fetch_concept_overview(user_id: int | None = None) -> list[dict]:
+    return [_build_concept_snapshot(row) for row in _fetch_concept_aggregate_rows(user_id=user_id)]
 
 
-def fetch_concept_realtime_snapshot(concept_id: str) -> dict | None:
-    rows = _fetch_concept_aggregate_rows([str(concept_id or "").strip()])
+def fetch_concept_realtime_snapshot(concept_id: str, user_id: int | None = None) -> dict | None:
+    rows = _fetch_concept_aggregate_rows([str(concept_id or "").strip()], user_id=user_id)
     if not rows:
         return None
     return _build_concept_snapshot(rows[0])
 
 
-def fetch_concept_macro(concept_id: str, limit: int = 240) -> dict | None:
-    concept = fetch_concept_profile(concept_id)
+def fetch_concept_macro(concept_id: str, limit: int = 240, user_id: int | None = None) -> dict | None:
+    concept = fetch_concept_profile(concept_id, user_id=user_id)
     if concept is None:
         return None
 

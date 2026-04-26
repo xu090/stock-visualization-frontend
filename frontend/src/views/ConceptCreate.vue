@@ -121,10 +121,12 @@ import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 
 import { useConceptStore } from '@/stores/concept'
+import { useAuthStore } from '@/stores/auth'
 import ConceptEditorDrawer from '@/components/ConceptEditorDrawer.vue'
 
 const router = useRouter()
 const conceptStore = useConceptStore()
+const authStore = useAuthStore()
 
 const drawerVisible = ref(false)
 const editingConcept = ref(null)
@@ -147,10 +149,18 @@ const tableData = computed(() => {
 })
 
 const openCreate = () => {
+  if (!authStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
   editingConcept.value = null
   drawerVisible.value = true
 }
 const openEdit = (row) => {
+  if (!authStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
   editingConcept.value = row
   drawerVisible.value = true
 }

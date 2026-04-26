@@ -512,22 +512,34 @@ const selectConceptStockSection = (id) => {
   selectedConceptStockSectionId.value = String(id)
 }
 
-const unfavoriteConcept = (concept) => {
+const unfavoriteConcept = async (concept) => {
   if (!concept?.id) return
-  conceptStore.removeConceptFromMyConcept?.(concept.id)
+  try {
+    await conceptStore.removeConceptFromMyConcept?.(concept.id)
+  } catch {
+    // Store already shows the login prompt.
+  }
 }
 
-const unfavoriteStock = (code) => {
+const unfavoriteStock = async (code) => {
   const c = normalizeCode(code)
   if (!c) return
-  stockStore.removeStockFromMyStocks?.(c)
+  try {
+    await stockStore.removeStockFromMyStocks?.(c)
+  } catch {
+    // Store already shows the login prompt.
+  }
 }
 
-const toggleStockFavorite = (code) => {
+const toggleStockFavorite = async (code) => {
   const c = normalizeCode(code)
   if (!c) return
-  if (stockStore.isStockFavorite?.(c)) stockStore.removeStockFromMyStocks?.(c)
-  else stockStore.addStockToMyStocks?.(c)
+  try {
+    if (stockStore.isStockFavorite?.(c)) await stockStore.removeStockFromMyStocks?.(c)
+    else await stockStore.addStockToMyStocks?.(c)
+  } catch {
+    // Store already shows the login prompt.
+  }
 }
 
 const removeStockFromConcept = (section, code) => {
@@ -544,7 +556,8 @@ const removeStockFromConcept = (section, code) => {
     id: concept.id,
     stockCodes: nextStockCodes
   })
-  ElMessage.success('已从概念中删除成分股')
+    ?.then(() => ElMessage.success('已从概念中删除成分股'))
+    ?.catch(error => ElMessage.error(error?.message || '请先登录'))
 }
 
 const editConceptFromSidebar = (concept) => {
@@ -561,18 +574,22 @@ const editConceptFromSidebar = (concept) => {
   conceptDrawerVisible.value = true
 }
 
-const saveConceptEdit = (conceptData) => {
+const saveConceptEdit = async (conceptData) => {
   if (!editingConcept.value?.id) return
   const prev = conceptStore.getConceptById?.(editingConcept.value.id)
-  conceptStore.updateUserConcept?.({
-    ...conceptData,
-    id: editingConcept.value.id,
-    editable: true,
-    favorite: prev?.favorite ?? true
-  })
-  conceptDrawerVisible.value = false
-  editingConcept.value = null
-  ElMessage.success('已更新概念')
+  try {
+    await conceptStore.updateUserConcept?.({
+      ...conceptData,
+      id: editingConcept.value.id,
+      editable: true,
+      favorite: prev?.favorite ?? true
+    })
+    conceptDrawerVisible.value = false
+    editingConcept.value = null
+    ElMessage.success('已更新概念')
+  } catch (error) {
+    ElMessage.error(error?.message || '请先登录')
+  }
 }
 
 /** 总览按钮状态 */

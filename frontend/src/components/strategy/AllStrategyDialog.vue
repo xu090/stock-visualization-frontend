@@ -139,7 +139,8 @@ import FilterEditor from '@/components/strategy/FilterEditor.vue'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   selectStrategies: { type: Array, default: () => [] },
-  currentAppliedSelectId: { type: [Number, String, null], default: null }
+  currentAppliedSelectId: { type: [Number, String, null], default: null },
+  loggedIn: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -271,6 +272,10 @@ const createVisible = ref(false)
 const createForm = ref(null)
 
 const openCreate = () => {
+  if (!props.loggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
   createForm.value = {
     name: '',
     desc: '',
