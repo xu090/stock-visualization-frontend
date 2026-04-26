@@ -88,6 +88,7 @@
             :key="item.id"
             effect="plain"
             class="tag"
+            :style="getDetailTagStyle(item.name)"
           >
             {{ item.name }}
           </el-tag>
@@ -130,11 +131,37 @@ const detailChartRef = ref(null)
 let categoryChart = null
 let detailChart = null
 
+const categoryColors = ['#2f7ed8', '#f39c12', '#27ae60', '#e74c3c', '#5d6d7e', '#8e44ad']
+const detailColors = ['#16a34a', '#dc2626', '#7c3aed', '#0891b2', '#ca8a04', '#be185d', '#4b5563', '#0f766e']
+
 const xAxisLabels = computed(() => macroStore.xAxisLabels)
 
-function buildCommonOption(title, series) {
+function colorAlpha(hex, alpha) {
+  const value = String(hex || '').replace('#', '')
+  if (value.length !== 6) return `rgba(64, 158, 255, ${alpha})`
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function getDetailColor(name) {
+  const index = detailChartSeries.value.findIndex(item => item.name === name)
+  return detailColors[Math.max(index, 0) % detailColors.length]
+}
+
+function getDetailTagStyle(name) {
+  const color = getDetailColor(name)
   return {
-    color: ['#2f7ed8', '#f39c12', '#27ae60', '#e74c3c', '#5d6d7e', '#8e44ad'],
+    color,
+    borderColor: colorAlpha(color, 0.45),
+    backgroundColor: colorAlpha(color, 0.06)
+  }
+}
+
+function buildCommonOption(title, series, colors) {
+  return {
+    color: colors,
     animationDuration: 250,
     tooltip: { trigger: 'axis' },
     legend: { type: 'scroll', top: 0 },
@@ -155,7 +182,7 @@ function buildCommonOption(title, series) {
     series: series.map(s => ({
       name: s.name,
       type: 'line',
-      smooth: true,
+      smooth: false,
       connectNulls: true,
       showSymbol: false,
       emphasis: { focus: 'series' },
@@ -168,13 +195,13 @@ function buildCommonOption(title, series) {
 function renderCategoryChart() {
   if (!categoryChartRef.value) return
   if (!categoryChart) categoryChart = echarts.init(categoryChartRef.value)
-  categoryChart.setOption(buildCommonOption('分组指数', categoryChartSeries.value), true)
+  categoryChart.setOption(buildCommonOption('分组指数', categoryChartSeries.value, categoryColors), true)
 }
 
 function renderDetailChart() {
   if (!detailChartRef.value) return
   if (!detailChart) detailChart = echarts.init(detailChartRef.value)
-  detailChart.setOption(buildCommonOption('概念指数', detailChartSeries.value), true)
+  detailChart.setOption(buildCommonOption('概念指数', detailChartSeries.value, detailColors), true)
 }
 
 function onClickCategoryRow(row) {

@@ -542,7 +542,7 @@ const initConceptTrendChart = () => {
       ...conceptLineSeries.value.map(item => ({
         name: item.name,
         type: 'line',
-        smooth: true,
+        smooth: false,
         symbol: 'none',
         connectNulls: true,
         data: item.data,
@@ -634,7 +634,7 @@ const initStockMaChart = () => {
     series: seriesList.map(item => ({
       name: item.name,
       type: 'line',
-      smooth: true,
+      smooth: false,
       symbol: 'none',
       connectNulls: true,
       data: alignSeriesToTimes(item, times),
