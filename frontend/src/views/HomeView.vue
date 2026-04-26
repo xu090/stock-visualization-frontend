@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="concept-management">
-    <ConceptMacroCharts />
+    <ConceptMacroCharts @locate-concept="locateConceptCard" />
     <div class="topbar" id="tour-topbar">
 
       <!-- 搜索面板 -->
@@ -440,6 +440,22 @@ const setFocus = async (id) => {
     focusConceptId.value = ''
     focusTimer = null
   }, 2200)
+}
+
+const locateConceptCard = async (id) => {
+  const targetId = String(id || '')
+  if (!targetId) return
+  const visible = displayList.value.some(item => String(item.id) === targetId)
+  if (!visible) {
+    searchQuery.value = ''
+    resetFilters()
+    homeFilter.onlyFavorites = false
+    homeFilter.onlyEditable = false
+    homeFilter.newsConceptIds = []
+    if ('appliedSelectStrategyId' in homeFilter) homeFilter.appliedSelectStrategyId = null
+    await nextTick()
+  }
+  await setFocus(targetId)
 }
 
 onBeforeUnmount(() => {

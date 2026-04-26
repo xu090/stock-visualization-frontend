@@ -89,6 +89,7 @@
             effect="plain"
             class="tag"
             :style="getDetailTagStyle(item.name)"
+            @click="onClickDetailTag(item)"
           >
             {{ item.name }}
           </el-tag>
@@ -99,11 +100,13 @@
 </template>
 
 <script setup>
+/* global defineEmits */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { storeToRefs } from 'pinia'
 import { useConceptMacroStore } from '@/stores/conceptMacro'
 
+const emit = defineEmits(['locate-concept'])
 const macroStore = useConceptMacroStore()
 const { categories, categoryChartSeries, detailChartSeries, detailItems, selectedCategory } = storeToRefs(macroStore)
 
@@ -206,6 +209,11 @@ function renderDetailChart() {
 
 function onClickCategoryRow(row) {
   macroStore.selectedCategoryId = row.id
+}
+
+function onClickDetailTag(item) {
+  if (!item?.id) return
+  emit('locate-concept', item.id)
 }
 
 function rowClassName({ row }) {
@@ -360,6 +368,13 @@ onBeforeUnmount(() => {
 
 .tag {
   margin: 0;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.tag:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
 }
 
 .up {

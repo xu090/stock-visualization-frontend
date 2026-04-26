@@ -253,8 +253,6 @@ const focusStrategyCard = async (_type, id) => {
   return true
 }
 
-defineExpose({ focusStrategyCard })
-
 const emptySelectFilters = () => ({
   minChange: null,
   maxChange: null,
@@ -288,6 +286,8 @@ const openCreate = () => {
   }
   createVisible.value = true
 }
+
+defineExpose({ focusStrategyCard, openCreate })
 
 const clearCreateSort = () => {
   if (!createForm.value?.snapshot) return

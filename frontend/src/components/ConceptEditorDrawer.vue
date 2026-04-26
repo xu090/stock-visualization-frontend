@@ -144,21 +144,6 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="指数算法" prop="algorithm">
-          <el-select v-model="form.algorithm" placeholder="选择算法" style="width: 240px;">
-            <el-option label="加权平均（更稳）" value="weighted" />
-            <el-option label="涨幅排序（更敏感）" value="percentage" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="概念描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="4"
-            placeholder="描述概念逻辑、选股范围、行业边界等"
-          />
-        </el-form-item>
       </el-form>
     </div>
 
@@ -172,6 +157,7 @@
 </template>
 
 <script setup>
+/* global defineProps, defineEmits */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useStockStore } from '@/stores/stock'
@@ -241,7 +227,7 @@ const form = ref({
   id: '',
   name: '',
   description: '',
-  algorithm: '',
+  algorithm: 'weighted',
   stockCodes: [] // [{code, stockName}]
 })
 
@@ -298,13 +284,13 @@ watch(
         id: String(val.id),
         name: val.name || '',
         description: val.description || '',
-        algorithm: val.algorithm || '',
+        algorithm: val.algorithm || 'weighted',
         stockCodes: codes.map((c) => ({ code: c, stockName: pickNameByCode(c) }))
       }
 
       checkedCodes.value = codes.slice()
     } else {
-      form.value = { id: '', name: '', description: '', algorithm: '', stockCodes: [] }
+      form.value = { id: '', name: '', description: '', algorithm: 'weighted', stockCodes: [] }
       checkedCodes.value = []
     }
   },
@@ -396,8 +382,8 @@ const save = () => {
   const conceptData = {
     id: form.value.id || Date.now().toString(),
     name: form.value.name,
-    description: form.value.description,
-    algorithm: form.value.algorithm,
+    description: form.value.description || '',
+    algorithm: form.value.algorithm || 'weighted',
     stockCodes: form.value.stockCodes.map((s) => normalizeCode(s.code)),
     isNew,
     mode: isNew ? 'create' : 'edit'

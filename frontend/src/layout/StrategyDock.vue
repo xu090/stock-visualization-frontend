@@ -76,6 +76,15 @@
         <div class="section">
           <div class="section-head">
             <span class="section-title">自定义策略</span>
+            <el-button
+              class="create-strategy-btn"
+              size="small"
+              type="primary"
+              plain
+              @click="openCreateStrategy"
+            >
+              新建策略
+            </el-button>
           </div>
           <div class="strategy-list" v-if="customStrategies.length">
             <div
@@ -473,6 +482,13 @@ const openAllStrategiesAt = async strategy => {
   }
 }
 
+const openCreateStrategy = async () => {
+  if (!requireLogin()) return
+  allDialogVisible.value = true
+  await nextTick()
+  allDialogRef.value?.openCreate?.()
+}
+
 const onAllDialogToggleFavorite = ({ strategy }) => toggleFavorite(strategy)
 const onAllDialogToggleApply = ({ strategy }) => toggleApply(strategy)
 const onAllDialogEdit = ({ strategy }) => openEdit(strategy)
@@ -611,6 +627,8 @@ const submitEdit = async () => {
 .section-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 3px 2px 7px;
 }
 
@@ -634,6 +652,14 @@ const submitEdit = async () => {
   border-radius: 999px;
   background: #409eff;
   transform: translateY(-50%);
+}
+
+.create-strategy-btn {
+  height: 24px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .strategy-list {
