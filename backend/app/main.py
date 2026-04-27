@@ -14,6 +14,7 @@ from app.auth_service import (
     delete_session,
     ensure_auth_tables,
     optional_current_user,
+    require_admin,
     require_current_user,
     update_user_account,
 )
@@ -581,23 +582,58 @@ def get_news_detail(external_id: str) -> dict:
 
 
 @app.post("/api/admin/bootstrap/concepts")
-def bootstrap_concepts() -> dict:
+def bootstrap_concepts(_user: dict = Depends(require_admin)) -> dict:
     # 允许手动重刷默认概念，便于调试或对齐前端概念定义。
     result = bootstrap_default_concepts()
     return {"ok": True, "data": result}
 
 
 @app.post("/api/admin/backfill-stock-names")
-def sync_stock_names() -> dict:
+def sync_stock_names(_user: dict = Depends(require_admin)) -> dict:
     # 把外部股票名称映射回填到当前 stocks 表中，修复早期只写代码不写中文名的记录。
     result = backfill_stock_names()
     return {"ok": True, "data": result}
 
 
 @app.post("/api/admin/db-indexes")
-def sync_db_indexes() -> dict:
+def sync_db_indexes(_user: dict = Depends(require_admin)) -> dict:
     result = ensure_query_indexes()
     return {"ok": True, "data": result}
+
+
+@app.post("/api/admin/concepts")
+def post_admin_concept(payload: ConceptPayload, _user: dict = Depends(require_admin)) -> dict:
+    try:
+        row = create_user_concept(payload.model_dump(), user_id=None)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"data": row}
+
+
+@app.patch("/api/admin/concepts/{concept_id}")
+def patch_admin_concept(concept_id: str, payload: ConceptPatch, _user: dict = Depends(require_admin)) -> dict:
+    try:
+        row = update_user_concept(concept_id, payload.model_dump(exclude_none=True), user_id=None, is_admin=True)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"data": row}
+
+
+@app.delete("/api/admin/concepts/{concept_id}")
+def remove_admin_concept(concept_id: str, _user: dict = Depends(require_admin)) -> dict:
+    try:
+        deleted = delete_user_concept(concept_id, user_id=None, is_admin=True)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="concept not found")
+    return {"ok": True}
 
 
 @app.get("/api/select-strategies")
@@ -620,7 +656,15 @@ def post_select_strategy(payload: SelectStrategyPayload, user: dict = Depends(re
 
 @app.patch("/api/select-strategies/{strategy_id}")
 def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: dict = Depends(require_current_user)) -> dict:
-    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True), user_id=user["id"])
+    try:
+        row = update_select_strategy(
+            strategy_id,
+            payload.model_dump(exclude_none=True),
+            user_id=user["id"],
+            is_admin=user.get("role") == "admin",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if row is None:
         raise HTTPException(status_code=404, detail="strategy not found")
     return {"data": row}
@@ -628,9 +672,31 @@ def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: 
 
 @app.delete("/api/select-strategies/{strategy_id}")
 def remove_select_strategy(strategy_id: int, user: dict = Depends(require_current_user)) -> dict:
-    return {"ok": delete_select_strategy(strategy_id, user_id=user["id"])}
+    return {"ok": delete_select_strategy(strategy_id, user_id=user["id"], is_admin=user.get("role") == "admin")}
 
 
 @app.post("/api/admin/bootstrap/select-strategies")
-def bootstrap_select_strategy_api() -> dict:
+def bootstrap_select_strategy_api(_user: dict = Depends(require_admin)) -> dict:
     return {"ok": True, "data": bootstrap_select_strategies()}
+
+
+@app.post("/api/admin/select-strategies")
+def post_admin_select_strategy(payload: SelectStrategyPayload, _user: dict = Depends(require_admin)) -> dict:
+    return {"data": create_select_strategy(payload.model_dump(), user_id=None)}
+
+
+@app.patch("/api/admin/select-strategies/{strategy_id}")
+def patch_admin_select_strategy(
+    strategy_id: int,
+    payload: SelectStrategyPatch,
+    _user: dict = Depends(require_admin),
+) -> dict:
+    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True), user_id=None, is_admin=True)
+    if row is None:
+        raise HTTPException(status_code=404, detail="strategy not found")
+    return {"data": row}
+
+
+@app.delete("/api/admin/select-strategies/{strategy_id}")
+def remove_admin_select_strategy(strategy_id: int, _user: dict = Depends(require_admin)) -> dict:
+    return {"ok": delete_select_strategy(strategy_id, user_id=None, is_admin=True)}

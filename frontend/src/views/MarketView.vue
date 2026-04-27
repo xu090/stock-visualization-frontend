@@ -60,8 +60,7 @@
         <div class="panel-row">
           <div class="panel-card">
             <div class="panel-title">资金流向</div>
-            <div ref="fundChartRef" class="chart chart-fund"></div>
-            <div v-if="!hasCapitalFlowData" class="chart-empty">暂无数据库资金流向数据</div>
+            <CapitalFlowChart :data="capitalFlow" :fallback-series="kline" empty-text="暂无概念资金流向数据" />
           </div>
 
           <div class="panel-card">
@@ -103,6 +102,7 @@ import * as echarts from 'echarts'
 import { Star, StarFilled } from '@element-plus/icons-vue'
 import ConceptAnalysisPanel from '@/components/ConceptAnalysisPanel.vue'
 import ConceptStockMergedTable from '@/components/ConceptStockMergedTable.vue'
+import CapitalFlowChart from '@/components/CapitalFlowChart.vue'
 import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useConceptDetailStore } from '@/stores/conceptDetail'
@@ -131,10 +131,6 @@ const concept = computed(() => conceptStore.getConceptById?.(curId.value) || nul
 const title = computed(() => concept.value?.name || curId.value || '概念')
 const detail = computed(() => conceptDetailStore.detailById[curId.value] || null)
 const capitalFlow = computed(() => conceptDetailStore.capitalFlowById[curId.value] || null)
-const hasCapitalFlowData = computed(() => {
-  const row = capitalFlow.value
-  return Boolean(row?.times?.length && (row?.inflow?.length || row?.outflow?.length || row?.netInflow?.length))
-})
 const kline = computed(() => conceptDetailStore.klineByKey[`${curId.value}:${klinePeriod.value}`] || null)
 const detailStocks = computed(() => conceptDetailStore.stocksById[curId.value] || [])
 
@@ -307,35 +303,9 @@ const detailList = computed(() => ([
 ]))
 
 const klinePeriod = ref('1m')
-const fundChartRef = ref(null)
 const klineChartRef = ref(null)
-let fundChart = null
 let klineChart = null
 let quotePollingTimer = null
-
-function initFundChart() {
-  if (!fundChartRef.value) return
-  fundChart?.dispose()
-  fundChart = echarts.init(fundChartRef.value)
-
-  const times = capitalFlow.value?.times || []
-  const inflow = capitalFlow.value?.inflow || []
-  const outflow = capitalFlow.value?.outflow || []
-  const netInflow = capitalFlow.value?.netInflow || []
-
-  fundChart.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, left: 'center', data: ['流入', '流出', '净流入'] },
-    grid: { left: 40, right: 20, top: 20, bottom: 50 },
-    xAxis: { type: 'category', data: times },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '流入', type: 'line', smooth: true, data: inflow },
-      { name: '流出', type: 'line', smooth: true, data: outflow },
-      { name: '净流入', type: 'bar', data: netInflow },
-    ],
-  })
-}
 
 function initKlineChart() {
   if (!klineChartRef.value) return
@@ -454,7 +424,6 @@ function initKlineChart() {
 }
 
 function resizeCharts() {
-  fundChart?.resize()
   klineChart?.resize()
 }
 
@@ -556,7 +525,6 @@ async function loadPageData() {
     quoteTask,
   ]).catch(() => null)
   restartQuotePolling()
-  initFundChart()
   initKlineChart()
   resizeCharts()
 }
@@ -583,10 +551,6 @@ watch(analysisWindow, async () => {
   await fetchAnalysisData()
 })
 
-watch(capitalFlow, () => {
-  initFundChart()
-})
-
 watch(kline, () => {
   initKlineChart()
 })
@@ -594,7 +558,6 @@ watch(kline, () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts)
   stopQuotePolling()
-  fundChart?.dispose()
   klineChart?.dispose()
 })
 </script>
@@ -783,21 +746,6 @@ onBeforeUnmount(() => {
   display:flex;
   justify-content:space-between;
   align-items:center;
-}
-
-.chart-fund{
-  height:240px;
-}
-
-.chart-empty{
-  margin-top:-132px;
-  height:96px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#909399;
-  font-size:13px;
-  pointer-events:none;
 }
 
 .chart-kline{

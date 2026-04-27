@@ -456,12 +456,22 @@ def create_select_strategy(payload: dict[str, Any], user_id: int | None = None) 
     return _map_strategy(row)
 
 
-def update_select_strategy(strategy_id: int, patch: dict[str, Any], user_id: int | None = None) -> dict[str, Any] | None:
+def update_select_strategy(
+    strategy_id: int,
+    patch: dict[str, Any],
+    user_id: int | None = None,
+    is_admin: bool = False,
+) -> dict[str, Any] | None:
     current = fetch_select_strategy(strategy_id, user_id)
     if not current:
         return None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id FROM strategies WHERE strategy_type = 'select' AND id = %s", (strategy_id,))
+            owner_row = cur.fetchone()
+    is_system_strategy = bool(owner_row) and owner_row["user_id"] is None
 
-    if user_id is not None and set(patch.keys()) == {"isFavorite"} and not current["isCustom"]:
+    if user_id is not None and set(patch.keys()) == {"isFavorite"} and is_system_strategy:
         ensure_strategies_table()
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -481,6 +491,9 @@ def update_select_strategy(strategy_id: int, patch: dict[str, Any], user_id: int
                     )
             conn.commit()
         return {**current, "isFavorite": bool(patch.get("isFavorite"))}
+
+    if not is_admin and user_id is not None and is_system_strategy:
+        raise PermissionError("system strategy can only be edited by admin")
 
     merged = {
         "name": patch.get("name", current["name"]),
@@ -504,7 +517,10 @@ def update_select_strategy(strategy_id: int, patch: dict[str, Any], user_id: int
                     snapshot = %s::jsonb,
                     updated_at = NOW()
                 WHERE strategy_type = 'select' AND id = %s
-                  AND (user_id IS NULL OR user_id = %s)
+                  AND (
+                    (%s AND user_id IS NULL)
+                    OR user_id = %s
+                  )
                 RETURNING id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at
                 """,
                 (
@@ -515,6 +531,7 @@ def update_select_strategy(strategy_id: int, patch: dict[str, Any], user_id: int
                     merged["enabled"],
                     _dumps_snapshot(merged["snapshot"]),
                     strategy_id,
+                    is_admin,
                     user_id,
                 ),
             )
@@ -523,12 +540,19 @@ def update_select_strategy(strategy_id: int, patch: dict[str, Any], user_id: int
     return _map_strategy(row) if row else None
 
 
-def delete_select_strategy(strategy_id: int, user_id: int | None = None) -> bool:
+def delete_select_strategy(strategy_id: int, user_id: int | None = None, is_admin: bool = False) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM strategies WHERE strategy_type = 'select' AND id = %s AND user_id = %s",
-                (strategy_id, user_id),
+                """
+                DELETE FROM strategies
+                WHERE strategy_type = 'select' AND id = %s
+                  AND (
+                    (%s AND user_id IS NULL)
+                    OR user_id = %s
+                  )
+                """,
+                (strategy_id, is_admin, user_id),
             )
             deleted = cur.rowcount > 0
         conn.commit()

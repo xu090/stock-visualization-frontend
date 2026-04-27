@@ -67,7 +67,16 @@
                   {{ s.id === currentAppliedSelectId ? '取消' : '应用' }}
                 </el-button>
                 <el-button class="btn-act" size="small" plain @click="openEdit(s)">编辑</el-button>
-                <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe(s)">删除</el-button>
+                <el-button
+                  v-if="s.isCustom"
+                  class="btn-act"
+                  size="small"
+                  plain
+                  type="danger"
+                  @click="removeStrategySafe(s)"
+                >
+                  删除
+                </el-button>
               </div>
             </div>
           </div>
@@ -133,7 +142,16 @@
                   {{ s.id === currentAppliedSelectId ? '取消' : '应用' }}
                 </el-button>
                 <el-button class="btn-act" size="small" plain @click="openEdit(s)">编辑</el-button>
-                <el-button class="btn-act" size="small" plain type="danger" @click="removeStrategySafe(s)">删除</el-button>
+                <el-button
+                  v-if="s.isCustom"
+                  class="btn-act"
+                  size="small"
+                  plain
+                  type="danger"
+                  @click="removeStrategySafe(s)"
+                >
+                  删除
+                </el-button>
               </div>
             </div>
           </div>
@@ -282,13 +300,17 @@ const moveAppliedToTop = (list = [], appliedId = null) => {
 }
 
 const favoriteStrategies = computed(() => {
-  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isFavorite)
+  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isFavorite && !s.isCustom)
   return moveAppliedToTop(list, currentAppliedSelectId.value)
 })
 
 const customStrategies = computed(() => {
-  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isCustom && !s.isFavorite)
-  return moveAppliedToTop(list, currentAppliedSelectId.value)
+  const list = (strategyStore.selectStrategies || []).filter(s => !!s.isCustom)
+  const sorted = list.slice().sort((a, b) => {
+    if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1
+    return 0
+  })
+  return moveAppliedToTop(sorted, currentAppliedSelectId.value)
 })
 
 const hasVisibleStrategies = computed(() => favoriteStrategies.value.length > 0 || customStrategies.value.length > 0)
@@ -383,6 +405,7 @@ const toggleFavorite = async s => {
 }
 
 const removeStrategySafe = async s => {
+  if (!s?.isCustom) return
   if (!requireLogin()) return
   try {
     await ElMessageBox.confirm(`确定删除「${s.name}」吗？`, '删除策略', {

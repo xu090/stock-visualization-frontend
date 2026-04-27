@@ -77,7 +77,7 @@
         <div class="panel-header">
           <div class="panel-title">资金流向</div>
         </div>
-        <div ref="fundChartRef" class="chart chart-fund" />
+        <CapitalFlowChart :data="capitalFlow" :fallback-series="kline" empty-text="暂无个股资金流向数据" />
       </div>
 
       <div class="panel-card">
@@ -103,6 +103,7 @@ import { useConceptStore } from '@/stores/concept'
 import { useStockStore } from '@/stores/stock'
 import { useStockDetailStore } from '@/stores/stockDetail'
 import { Star, StarFilled } from '@element-plus/icons-vue'
+import CapitalFlowChart from '@/components/CapitalFlowChart.vue'
 
 function normalizeCode(raw) {
   if (raw == null) return ''
@@ -233,29 +234,8 @@ const detailList = computed(() => {
 })
 
 const klinePeriod = ref('1m')
-const fundChartRef = ref(null)
 const klineChartRef = ref(null)
-let fundChart = null
 let klineChart = null
-
-function initFundChart() {
-  if (!fundChartRef.value) return
-  fundChart?.dispose()
-  fundChart = echarts.init(fundChartRef.value)
-
-  fundChart.setOption({
-    tooltip: { trigger: 'axis' },
-    grid: { left: 44, right: 18, top: 18, bottom: 42 },
-    legend: { bottom: 6, left: 'center', data: ['流入', '流出', '净流入'] },
-    xAxis: { type: 'category', data: capitalFlow.value?.times || [], axisTick: { show: false } },
-    yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { opacity: 0.35 } } },
-    series: [
-      { name: '流入', type: 'line', smooth: true, data: capitalFlow.value?.inflow || [] },
-      { name: '流出', type: 'line', smooth: true, data: capitalFlow.value?.outflow || [] },
-      { name: '净流入', type: 'bar', data: capitalFlow.value?.netInflow || [], barWidth: 14 },
-    ],
-  })
-}
 
 function initKlineChart() {
   if (!klineChartRef.value) return
@@ -378,7 +358,6 @@ function initKlineChart() {
 }
 
 function resizeCharts() {
-  fundChart?.resize()
   klineChart?.resize()
 }
 
@@ -391,7 +370,6 @@ async function loadPageData() {
     sector: routeSector.value,
     period: klinePeriod.value,
   })
-  initFundChart()
   initKlineChart()
   resizeCharts()
 }
@@ -414,17 +392,12 @@ watch(klinePeriod, async value => {
   initKlineChart()
 })
 
-watch(capitalFlow, () => {
-  initFundChart()
-})
-
 watch(kline, () => {
   initKlineChart()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts)
-  fundChart?.dispose()
   klineChart?.dispose()
 })
 </script>
@@ -492,7 +465,6 @@ onBeforeUnmount(() => {
 .panel-title { font-size: 15px; font-weight: 900; color: #303133; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .chart { width: 100%; }
-.chart-fund { height: 260px; }
 .chart-kline { height: 380px; }
 .chart-note { margin-top: 10px; font-size: 12px; color: #909399; }
 

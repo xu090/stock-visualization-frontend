@@ -54,7 +54,7 @@
             {{ s.id === currentAppliedSelectId ? '取消应用' : '应用' }}
           </el-button>
           <el-button size="small" plain @click="emitEdit(s)">编辑</el-button>
-          <el-button size="small" plain type="danger" @click="emitRemove(s)">删除</el-button>
+          <el-button v-if="s.isCustom" size="small" plain type="danger" @click="emitRemove(s)">删除</el-button>
         </div>
       </div>
     </div>

@@ -461,7 +461,12 @@ def create_user_concept(payload: dict, user_id: int | None = None) -> dict:
     return _map_concept_row(row, stock_codes)
 
 
-def update_user_concept(concept_id: str, payload: dict, user_id: int | None = None) -> dict | None:
+def update_user_concept(
+    concept_id: str,
+    payload: dict,
+    user_id: int | None = None,
+    is_admin: bool = False,
+) -> dict | None:
     concept_id = str(concept_id or "").strip()
     if not concept_id:
         return None
@@ -470,8 +475,17 @@ def update_user_concept(concept_id: str, payload: dict, user_id: int | None = No
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, editable, user_id FROM concepts WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
-                (concept_id, user_id),
+                """
+                SELECT id, editable, user_id
+                FROM concepts
+                WHERE id = %s
+                  AND (
+                    (%s AND user_id IS NULL)
+                    OR user_id IS NULL
+                    OR user_id = %s
+                  )
+                """,
+                (concept_id, is_admin, user_id),
             )
             existing = cur.fetchone()
             if not existing:
@@ -479,7 +493,9 @@ def update_user_concept(concept_id: str, payload: dict, user_id: int | None = No
             # 系统内置概念不允许改名称、描述、算法和成分股，但收藏状态属于用户侧偏好，
             # 前端首页/概念列表需要能够持久化这个开关。
             payload_keys = set(payload.keys())
-            if not existing["editable"] and payload_keys - {"favorite"}:
+            if existing["user_id"] is None and payload_keys - {"favorite"} and not is_admin:
+                raise PermissionError("system concept can only be edited by admin")
+            if not existing["editable"] and payload_keys - {"favorite"} and not is_admin:
                 raise PermissionError("system concept cannot be modified")
 
             fields: list[str] = []
@@ -530,10 +546,15 @@ def update_user_concept(concept_id: str, payload: dict, user_id: int | None = No
                     f"""
                     UPDATE concepts
                     SET {', '.join(fields)}
-                    WHERE id = %s AND (user_id IS NULL OR user_id = %s)
+                    WHERE id = %s
+                      AND (
+                        (%s AND user_id IS NULL)
+                        OR user_id IS NULL
+                        OR user_id = %s
+                      )
                     RETURNING id, name, description, algorithm, editable, favorite, source
                     """,
-                    tuple(params + [user_id]),
+                    tuple(params + [is_admin, user_id]),
                 )
                 row = cur.fetchone()
             else:
@@ -557,7 +578,7 @@ def update_user_concept(concept_id: str, payload: dict, user_id: int | None = No
     return _map_concept_row(row, stock_codes)
 
 
-def delete_user_concept(concept_id: str, user_id: int | None = None) -> bool:
+def delete_user_concept(concept_id: str, user_id: int | None = None, is_admin: bool = False) -> bool:
     concept_id = str(concept_id or "").strip()
     if not concept_id:
         return False
@@ -565,11 +586,22 @@ def delete_user_concept(concept_id: str, user_id: int | None = None) -> bool:
     ensure_user_concept_tables()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT editable FROM concepts WHERE id = %s AND user_id = %s", (concept_id, user_id))
+            cur.execute(
+                """
+                SELECT editable, user_id
+                FROM concepts
+                WHERE id = %s
+                  AND (
+                    (%s AND user_id IS NULL)
+                    OR user_id = %s
+                  )
+                """,
+                (concept_id, is_admin, user_id),
+            )
             row = cur.fetchone()
             if not row:
                 return False
-            if not row["editable"]:
+            if not row["editable"] and not is_admin:
                 raise PermissionError("system concept cannot be deleted")
 
             cur.execute("DELETE FROM concept_stocks WHERE concept_id = %s", (concept_id,))
