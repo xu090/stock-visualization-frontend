@@ -7,6 +7,7 @@ import { apiDelete, apiGet, apiPost } from '@/utils/api'
 const QUOTE_TTL_MS = 30 * 1000
 const MY_STOCK_CODES_KEY = 'my_stock_codes'
 const DEFAULT_MY_STOCK_CODES = ['603501', '688167', '002371']
+const MIN_VALID_STOCK_BASE_SIZE = 5000
 
 function requireLogin() {
   const auth = useAuthStore()
@@ -23,10 +24,15 @@ function normalizeCode(raw) {
   return s
 }
 
+function normalizeStockName(raw) {
+  const name = typeof raw === 'string' ? raw.trim() : ''
+  return name.replace(/^(XD|XR|DR)(?=[\u4e00-\u9fa5A-Za-z])/i, '')
+}
+
 function normalizeQuote(item = {}) {
   const code = normalizeCode(item.code)
   const change = item.change ?? item.changePercent ?? 0
-  const name = typeof item.name === 'string' ? item.name.trim() : ''
+  const name = normalizeStockName(item.name)
   return {
     ...item,
     code,
@@ -57,8 +63,8 @@ function buildBaseMap(list = []) {
 
 function pickBaseName(existingName, incomingName, code) {
   const normalizedCode = normalizeCode(code)
-  const current = String(existingName || '').trim()
-  const next = String(incomingName || '').trim()
+  const current = normalizeStockName(existingName)
+  const next = normalizeStockName(incomingName)
   if (next && next !== normalizedCode) return next
   if (current && current !== normalizedCode) return current
   return next || current || normalizedCode
@@ -112,12 +118,10 @@ function saveMyStockCodes(codes = []) {
 export const useStockStore = defineStore('stock', {
   state: () => {
     // 浠?localStorage 鍔犺浇缂撳瓨鐨勮偂绁ㄥ熀纭€鏁版嵁
-    let cachedStockBaseList = []
+    const cachedStockBaseList = []
     try {
-      const cached = localStorage.getItem('stock_base_list')
-      if (cached) {
-        cachedStockBaseList = JSON.parse(cached)
-      }
+      const cached = null
+      void cached
     } catch (e) {
       console.warn('Failed to load cached stock base list:', e)
     }
@@ -202,11 +206,6 @@ export const useStockStore = defineStore('stock', {
       this.stockBaseLoaded = true
 
       // 鎸佷箙鍖栧埌 localStorage
-      try {
-        localStorage.setItem('stock_base_list', JSON.stringify(this.stockBaseList))
-      } catch (e) {
-        console.warn('Failed to save stock base list:', e)
-      }
     },
 
     upsertQuote(item = {}) {
@@ -257,10 +256,10 @@ export const useStockStore = defineStore('stock', {
      * 鎵归噺鍔犺浇鑲＄エ鍩虹鏁版嵁骞剁紦瀛?
      * 鐢ㄤ簬鍒濆鍖栨椂浠庢湇鍔″櫒鑾峰彇鎵€鏈夎偂绁ㄥ熀纭€淇℃伅
      */
-    async loadStockBaseList() {
+    async loadStockBaseList(force = false) {
       try {
         // 如果已有数据且不为空，跳过加载
-        if (this.stockBaseList.length > 0) {
+        if (!force && this.stockBaseList.length >= MIN_VALID_STOCK_BASE_SIZE) {
           this.stockBaseLoaded = true
           return this.stockBaseList
         }
@@ -271,11 +270,6 @@ export const useStockStore = defineStore('stock', {
           this.stockBaseMap = buildBaseMap(rows)
           this.stockBaseLoaded = true
           // 鎸佷箙鍖栧埌 localStorage
-          try {
-            localStorage.setItem('stock_base_list', JSON.stringify(this.stockBaseList))
-          } catch (e) {
-            console.warn('Failed to save stock base list:', e)
-          }
         }
         return this.stockBaseList
       } catch (error) {

@@ -55,7 +55,7 @@ from app.stock_market_service import (
     fetch_stock_market_detail,
 )
 from app.stock_market_caps import get_stock_market_cap
-from app.stock_service import fetch_stock_detail, search_stocks
+from app.stock_service import fetch_stock_base_list, fetch_stock_detail, search_stocks
 from app.strategy_service import (
     bootstrap_select_strategies,
     create_select_strategy,
@@ -385,6 +385,11 @@ def get_quotes(payload: QuoteRequest) -> dict:
 def search_stock_api(q: str, limit: int = 20) -> dict:
     rows = search_stocks(q, min(max(limit, 1), 50))
     return {"data": rows}
+
+
+@app.get("/api/stocks/base")
+def get_stock_base_api() -> dict:
+    return {"data": fetch_stock_base_list()}
 
 
 @app.get("/api/favorite-stocks")

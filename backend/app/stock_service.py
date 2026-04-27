@@ -57,6 +57,73 @@ def _map_stock_row(row: dict) -> dict:
     }
 
 
+def fetch_stock_base_list() -> list[dict]:
+    sql = """
+        WITH latest_stock AS (
+            SELECT DISTINCT ON (stock_code)
+                stock_code,
+                market_code,
+                ts,
+                open,
+                close,
+                high,
+                low,
+                previous_close,
+                vol,
+                amount,
+                tor,
+                ftor,
+                udp,
+                udf,
+                udz
+            FROM stock_time_sharing_compat
+            ORDER BY stock_code, ts DESC
+        ),
+        stock_codes AS (
+            SELECT code
+            FROM stocks
+            UNION
+            SELECT stock_code AS code
+            FROM latest_stock
+        ),
+        stock_universe AS (
+            SELECT
+                sc.code,
+                COALESCE(NULLIF(s.name, ''), sc.code) AS name,
+                COALESCE(NULLIF(s.market_code, ''), ls.market_code, '') AS market_code
+            FROM stock_codes sc
+            LEFT JOIN stocks s ON s.code = sc.code
+            LEFT JOIN latest_stock ls ON ls.stock_code = sc.code
+        )
+        SELECT
+            su.code,
+            su.name,
+            COALESCE(NULLIF(su.market_code, ''), ls.market_code, '') AS market_code,
+            ls.ts,
+            ls.open,
+            ls.close,
+            ls.high,
+            ls.low,
+            ls.previous_close,
+            ls.vol,
+            ls.amount,
+            ls.tor,
+            ls.ftor,
+            ls.udp,
+            ls.udf,
+            ls.udz
+        FROM stock_universe su
+        LEFT JOIN latest_stock ls ON ls.stock_code = su.code
+        WHERE su.code ~ '^[0-9]{6}$'
+        ORDER BY su.code ASC
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+    return [_map_stock_row(row) for row in rows]
+
+
 def search_stocks(query: str, limit: int = 20) -> list[dict]:
     keyword = (query or "").strip()
     if not keyword:

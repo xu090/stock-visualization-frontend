@@ -99,7 +99,6 @@ export default {
         await Promise.allSettled([
           conceptStore.ensureLoaded(true),
           strategyStore.ensureLoaded(),
-          stockStore.loadStockBaseList(),
           stockStore.fetchFavoriteStocks()
         ])
         await stockStore.hydrateMyStocks?.((conceptStore.myStockList || []).map(item => item?.code || item))

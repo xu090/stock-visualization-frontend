@@ -27,14 +27,6 @@
               <div class="pick-actions">
                 <el-button
                   size="small"
-                  @click="selectAllFiltered"
-                  :disabled="filteredStocks.length === 0"
-                >
-                  全选当前
-                </el-button>
-
-                <el-button
-                  size="small"
                   @click="clearAllSelected"
                   :disabled="form.stockCodes.length === 0"
                 >
@@ -44,6 +36,27 @@
             </div>
 
             <!-- 已选股票：可滚动 + 空态（高度缩小） -->
+            <div class="batch-add">
+              <el-input
+                v-model="batchText"
+                type="textarea"
+                :rows="2"
+                resize="none"
+                placeholder="批量粘贴股票代码，如：688981, 300750, sz002371"
+              />
+              <div class="batch-actions">
+                <span class="batch-tip">支持逗号、空格、换行、带市场前后缀</span>
+                <div class="batch-buttons">
+                  <el-button size="small" @click="batchText = ''" :disabled="!batchText.trim()">
+                    清空
+                  </el-button>
+                  <el-button size="small" type="primary" plain @click="addBatchCodes" :disabled="!batchText.trim()">
+                    批量添加
+                  </el-button>
+                </div>
+              </div>
+            </div>
+
             <div class="picked-box" :class="{ empty: !form.stockCodes.length }">
               <div v-if="form.stockCodes.length" class="picked-tags">
                 <el-tag
@@ -62,12 +75,20 @@
             </div>
 
             <!-- 搜索 -->
-            <el-input
-              v-model="searchQuery"
-              placeholder="搜索（股票名称 / 代码）"
-              clearable
-              class="stock-search"
-            />
+            <div class="search-row">
+              <el-input
+                v-model="searchQuery"
+                placeholder="输入股票名称或代码搜索"
+                clearable
+                class="stock-search"
+                @keyup.enter="searchStocks"
+                @clear="clearSearchResults"
+              />
+              <el-button size="small" type="primary" plain :loading="searchLoading" @click="searchStocks">
+                <el-icon><Search /></el-icon>
+                <span>搜索</span>
+              </el-button>
+            </div>
 
             <!-- 表格：checkbox 直接绑定到 checkedCodes（它=已选code集合）
                  ✅ 固定：勾选框 + 股票名称 + 股票代码
@@ -75,11 +96,11 @@
                  ✅ 滚动条不展示（但可滚动）
             -->
             <el-table
-              :data="filteredStocks"
+              :data="searchResults"
               stripe
               class="stock-table scroll-hidden"
               height="320"
-              empty-text="暂无匹配股票"
+              :empty-text="searchQuery.trim() ? '暂无匹配股票' : '输入名称或代码搜索股票'"
               @row-click="toggleRowChecked"
               :row-key="row => row.code"
             >
@@ -87,12 +108,25 @@
               <el-table-column
                 fixed="left"
                 label=""
-                width="30"
+                width="42"
                 align="center"
                 class-name="col-check"
               >
+                <template #header>
+                  <el-checkbox
+                    :model-value="isAllSearchChecked"
+                    :indeterminate="isPartialSearchChecked"
+                    :disabled="searchResults.length === 0"
+                    @change="toggleAllSearchResults"
+                    @click.stop
+                  />
+                </template>
                 <template #default="{ row }">
-                  <el-checkbox v-model="checkedCodes" :label="row.code" @click.stop />
+                  <el-checkbox
+                    :model-value="isCodeChecked(row.code)"
+                    @change="toggleCodeChecked(row.code)"
+                    @click.stop
+                  />
                 </template>
               </el-table-column>
 
@@ -101,43 +135,47 @@
                 fixed="left"
                 label="股票名称"
                 prop="stockName"
-                width="100"
-                show-overflow-tooltip
-                align="center"
-              />
+                width="90"
+                align="left"
+                class-name="col-name"
+              >
+                <template #default="{ row }">
+                  <span class="stock-name-text" :title="row.stockName">{{ row.stockName }}</span>
+                </template>
+              </el-table-column>
 
               <!-- ✅ 固定：股票代码（你要的） -->
               <el-table-column
                 fixed="left"
                 label="股票代码"
                 prop="code"
-                width="100"
+                width="90"
                 show-overflow-tooltip
                 align="center"
+                class-name="col-name"
               />
 
-              <!-- 下面这些列会在右侧横向滚动 -->
-              <el-table-column label="开盘" width="78" align="right">
-                <template #default="{ row }">{{ fmtPrice(row.open) }}</template>
+              <el-table-column label="最新" width="76" align="right" prop="price">
+                <template #default="{ row }">{{ fmtPrice(row.price) }}</template>
               </el-table-column>
 
-              <el-table-column label="收盘" width="78" align="right">
-                <template #default="{ row }">{{ fmtPrice(row.close) }}</template>
+              <el-table-column label="涨跌幅" width="76" align="right" prop="changePercent">
+                <template #default="{ row }">
+                  <span :class="changeClass(row.changePercent)">{{ fmtPct(row.changePercent) }}</span>
+                </template>
               </el-table-column>
 
-              <el-table-column label="最高" width="78" align="right">
-                <template #default="{ row }">{{ fmtPrice(row.high) }}</template>
+              <el-table-column label="涨跌额" width="76" align="right" prop="changeAmount">
+                <template #default="{ row }">
+                  <span :class="changeClass(row.changeAmount)">{{ fmtSignedPrice(row.changeAmount) }}</span>
+                </template>
               </el-table-column>
 
-              <el-table-column label="最低" width="78" align="right">
-                <template #default="{ row }">{{ fmtPrice(row.low) }}</template>
-              </el-table-column>
-
-              <el-table-column label="成交量" width="105" align="right">
+              <el-table-column label="成交量" width="78" align="right" prop="vol">
                 <template #default="{ row }">{{ fmtInt(row.vol) }}</template>
               </el-table-column>
 
-              <el-table-column label="成交额" width="120" align="right">
+              <el-table-column label="成交额" width="88" align="right" prop="amount">
                 <template #default="{ row }">{{ fmtInt(row.amount) }}</template>
               </el-table-column>
             </el-table>
@@ -160,6 +198,7 @@
 /* global defineProps, defineEmits */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { useStockStore } from '@/stores/stock'
 
 const stockStore = useStockStore()
@@ -213,8 +252,8 @@ const containerProps = computed(() => {
 function normalizeCode(raw) {
   if (raw == null) return ''
   let s = String(raw).trim()
-  s = s.replace(/\.(SZ|SH)$/i, '')
-  s = s.replace(/^(sz|sh)/i, '')
+  s = s.replace(/\.(SZ|SH|BJ)$/i, '')
+  s = s.replace(/^(sz|sh|bj)/i, '')
   return s
 }
 function pickNameByCode(code) {
@@ -236,33 +275,90 @@ const checkedCodes = ref([])
 
 /** 搜索关键字 */
 const searchQuery = ref('')
+const batchText = ref('')
 
 /** 表格行 */
-const stockRows = computed(() => {
-  const baseList = stockStore.stockBaseList || []
-  return baseList.map((b) => {
-    const code = normalizeCode(b.code)
-    const enriched = stockStore.getStockByCodeEnriched?.(code) || { code, name: b.name }
-    return {
-      code,
-      stockName: enriched.name || b.name || code,
-      open: enriched.open,
-      close: enriched.close ?? enriched.price,
-      high: enriched.high,
-      low: enriched.low,
-      vol: enriched.volume ?? enriched.vol,
-      amount: enriched.amount
-    }
-  })
-})
+const searchResults = ref([])
+const searchLoading = ref(false)
+const DEFAULT_SEARCH_CODES = [
+  '000001', '600519', '300750', '002371', '688981',
+  '603501', '000858', '601318', '600036', '000725',
+  '002594', '000063', '002415', '600276', '601899',
+  '600900', '601012', '300760', '600030', '688111'
+]
 
-const filteredStocks = computed(() => {
-  const kw = (searchQuery.value || '').trim()
-  if (!kw) return stockRows.value
-  return stockRows.value.filter(
-    (s) => (s.stockName || '').includes(kw) || String(s.code).includes(kw)
-  )
-})
+function mapStockRow(row = {}) {
+  const code = normalizeCode(row.code)
+  const enriched = stockStore.getStockByCodeEnriched?.(code) || row
+  return {
+    code,
+    stockName: enriched.name || row.name || code,
+    price: enriched.price ?? enriched.close ?? row.price ?? row.close,
+    open: enriched.open ?? row.open,
+    close: enriched.close ?? enriched.price ?? row.close ?? row.price,
+    high: enriched.high ?? row.high,
+    low: enriched.low ?? row.low,
+    changePercent: enriched.changePercent ?? enriched.change ?? row.changePercent ?? row.change,
+    changeAmount: enriched.changeAmount ?? row.changeAmount,
+    vol: enriched.volume ?? enriched.vol ?? row.volume ?? row.vol,
+    amount: enriched.amount ?? row.amount
+  }
+}
+
+const loadDefaultSearchResults = async () => {
+  searchLoading.value = true
+  try {
+    await stockStore.ensureStockProfiles(DEFAULT_SEARCH_CODES)
+    searchResults.value = DEFAULT_SEARCH_CODES
+      .map(code => stockStore.getStockByCodeEnriched?.(code))
+      .map(mapStockRow)
+      .filter(item => item.code)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+const clearSearchResults = () => {
+  loadDefaultSearchResults()
+}
+
+const searchStocks = async () => {
+  const keyword = searchQuery.value.trim()
+  if (!keyword) {
+    searchResults.value = []
+    return
+  }
+  searchLoading.value = true
+  try {
+    const rows = await stockStore.searchStocks(keyword, 50)
+    searchResults.value = (rows || []).map(mapStockRow).filter(item => item.code)
+  } catch (error) {
+    ElMessage.error(error?.message || '股票搜索失败')
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+const searchResultCodes = computed(() => (
+  searchResults.value
+    .map(item => normalizeCode(item.code))
+    .filter(Boolean)
+))
+
+const checkedCodeSet = computed(() => new Set(checkedCodes.value.map(normalizeCode).filter(Boolean)))
+const checkedSearchCount = computed(() => searchResultCodes.value.filter(code => checkedCodeSet.value.has(code)).length)
+const isAllSearchChecked = computed(() => searchResultCodes.value.length > 0 && checkedSearchCount.value === searchResultCodes.value.length)
+const isPartialSearchChecked = computed(() => checkedSearchCount.value > 0 && checkedSearchCount.value < searchResultCodes.value.length)
+
+watch(
+  visible,
+  value => {
+    if (value && !searchResults.value.length) {
+      loadDefaultSearchResults()
+    }
+  },
+  { immediate: true }
+)
 
 /** ✅ 初始化：编辑时把已有 stockCodes 同步到 checkedCodes（表格默认勾选） */
 watch(
@@ -330,6 +426,13 @@ watch(
 /** 行点击：勾选/取消 */
 const toggleRowChecked = (row) => {
   const code = normalizeCode(row?.code)
+  toggleCodeChecked(code)
+}
+
+const isCodeChecked = code => checkedCodeSet.value.has(normalizeCode(code))
+
+const toggleCodeChecked = code => {
+  code = normalizeCode(code)
   if (!code) return
   const idx = checkedCodes.value.findIndex((c) => normalizeCode(c) === code)
   if (idx >= 0) checkedCodes.value.splice(idx, 1)
@@ -337,18 +440,55 @@ const toggleRowChecked = (row) => {
 }
 
 /** 全选当前（过滤结果全部加入已选） */
-const selectAllFiltered = () => {
-  const set = new Set(checkedCodes.value.map(normalizeCode).filter(Boolean))
-  filteredStocks.value.forEach((s) => set.add(normalizeCode(s.code)))
-  // 让“原有顺序”在前，“新增”在后，体验更自然
-  const base = checkedCodes.value.map(normalizeCode).filter(Boolean)
-  const extra = Array.from(set).filter((c) => !base.includes(c))
-  checkedCodes.value = base.concat(extra)
+const toggleAllSearchResults = (checked) => {
+  const targetCodes = searchResultCodes.value
+  if (!targetCodes.length) return
+  const targetSet = new Set(targetCodes)
+  const current = checkedCodes.value.map(normalizeCode).filter(Boolean)
+  if (checked) {
+    checkedCodes.value = current.concat(targetCodes.filter(code => !current.includes(code)))
+  } else {
+    checkedCodes.value = current.filter(code => !targetSet.has(code))
+  }
+}
+
+const parseBatchCodes = text => {
+  const matches = String(text || '').match(/(?:sh|sz|bj)?\d{6}(?:\.(?:SH|SZ|BJ))?/gi) || []
+  const seen = new Set()
+  return matches
+    .map(normalizeCode)
+    .filter(code => /^\d{6}$/.test(code))
+    .filter(code => {
+      if (seen.has(code)) return false
+      seen.add(code)
+      return true
+    })
+}
+
+const addBatchCodes = async () => {
+  const codes = parseBatchCodes(batchText.value)
+  if (!codes.length) {
+    ElMessage.warning('没有识别到有效的 6 位股票代码')
+    return
+  }
+  const current = checkedCodes.value.map(normalizeCode).filter(Boolean)
+  const currentSet = new Set(current)
+  const nextCodes = codes.filter(code => !currentSet.has(code))
+  if (!nextCodes.length) {
+    ElMessage.info('这些股票已在成分股中')
+    batchText.value = ''
+    return
+  }
+  await stockStore.ensureStockProfiles(nextCodes)
+  checkedCodes.value = current.concat(nextCodes)
+  batchText.value = ''
+  ElMessage.success(`已添加 ${nextCodes.length} 支股票`)
 }
 
 /** 清空已选（等价于清空勾选） */
 const clearAllSelected = () => {
   checkedCodes.value = []
+  batchText.value = ''
 }
 
 /** 删除已选 tag：同步取消勾选 */
@@ -365,9 +505,25 @@ const fmtPrice = (v) => {
   const n = Number(v)
   return !Number.isFinite(n) ? '--' : n.toFixed(2)
 }
+const fmtSignedPrice = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '--'
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
+}
+const fmtPct = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '--'
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
+}
 const fmtInt = (v) => {
   const n = Number(v)
   return !Number.isFinite(n) ? '--' : Math.round(n).toLocaleString()
+}
+const changeClass = (v) => {
+  const n = Number(v)
+  if (n > 0) return 'quote-up'
+  if (n < 0) return 'quote-down'
+  return ''
 }
 
 /** 保存 */
@@ -440,6 +596,36 @@ const save = () => {
 }
 
 /* 已选区域：更小高度 */
+.batch-add{
+  border: 1px solid rgba(64,158,255,.16);
+  background: rgba(64,158,255,.04);
+  border-radius: 12px;
+  padding: 10px;
+  display:flex;
+  flex-direction:column;
+  gap: 8px;
+}
+
+.batch-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.batch-tip{
+  color:#909399;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.batch-buttons{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+
 .picked-box{
   border: 1px dashed rgba(0,0,0,.14);
   background: rgba(0,0,0,.015);
@@ -463,15 +649,47 @@ const save = () => {
 .empty-picked{ font-size: 12px; color:#c0c4cc; }
 
 /* 搜索 */
-.stock-search{ margin-top: 2px; }
+.search-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:2px;
+}
+
+.stock-search{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+.search-row .el-button{
+  flex:0 0 auto;
+  min-width: 86px;
+  height: 32px;
+  padding: 0 16px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  font-size: 14px;
+}
+
+.search-row .el-icon{
+  font-size: 15px;
+}
 
 /* ✅ 表格更紧凑：行高、padding、表头间距 */
 .stock-table :deep(.el-table__cell){
-  padding: 6px 2px;
+  padding: 6px 0;
 }
 .stock-table :deep(.el-table__header .el-table__cell){
-  padding: 6px 10px;
+  padding: 6px 0;
   font-weight: 900;
+}
+
+.stock-table :deep(.cell){
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
 }
 
 /* 表格 hover */
@@ -512,17 +730,43 @@ const save = () => {
 
 /* ✅ 勾选列更紧凑一点 */
 .stock-table :deep(.col-check .cell){
-  padding-left: 6px;
-  padding-right: 6px;
+  padding-left: 0;
+  padding-right: 0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
 }
 
 /* ✅ 名称/代码列稍微强调 */
 .stock-table :deep(.col-name .cell){
   font-weight: 600;
+  padding-left: 8px;
+  padding-right: 4px;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+.stock-name-text{
+  display: inline-block;
+  max-width: none;
+  white-space: nowrap;
 }
 .stock-table :deep(.col-code .cell){
   font-weight: 600;
   color: #606266;
+  padding-left: 2px;
+  padding-right: 2px;
+  white-space: nowrap;
+}
+
+.quote-up{
+  color:#f56c6c;
+  font-weight:800;
+}
+
+.quote-down{
+  color:#67c23a;
+  font-weight:800;
 }
 
 .drawer-footer{ display:flex; justify-content:flex-end; gap: 10px; }
