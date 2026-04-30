@@ -35,6 +35,30 @@
         <el-option label="下跌" value="down" />
         <el-option label="震荡" value="flat" />
       </el-select>
+      <el-select
+        v-model="query.codePrefix"
+        size="small"
+        placeholder="市场板块"
+        style="width: 120px"
+      >
+        <el-option label="板块全部" value="" />
+        <el-option label="深市主板" value="0" />
+        <el-option label="创业板" value="3" />
+        <el-option label="沪市股票" value="6" />
+        <el-option label="其他" value="other" />
+      </el-select>
+      <el-select
+        v-model="query.marketCap"
+        size="small"
+        placeholder="市值规模"
+        style="width: 130px"
+      >
+        <el-option label="市值全部" value="" />
+        <el-option label="千亿以上" value="gte1000y" />
+        <el-option label="500-1000亿" value="500y-1000y" />
+        <el-option label="100-500亿" value="100y-500y" />
+        <el-option label="100亿以下" value="lt100y" />
+      </el-select>
       <el-button size="small" plain @click="resetFilters">重置筛选</el-button>
     </div>
 
@@ -127,7 +151,9 @@ const stockStore = useStockStore()
 const query = reactive({
   keyword: '',
   correlation: '',
-  direction: ''
+  direction: '',
+  codePrefix: '',
+  marketCap: ''
 })
 
 const analysisPayload = computed(() => buildConceptAnalysisPayload(props.concept, props.stocks, {
@@ -143,6 +169,8 @@ const filteredStocks = computed(() => {
     }
     if (query.correlation && item.correlationCategory !== query.correlation) return false
     if (query.direction && item.trendDirection !== query.direction) return false
+    if (query.codePrefix && !matchesCodePrefix(item.code, query.codePrefix)) return false
+    if (query.marketCap && !matchesMarketCap(item.mktCap, query.marketCap)) return false
     return true
   })
 })
@@ -182,6 +210,8 @@ function resetFilters() {
   query.keyword = ''
   query.correlation = ''
   query.direction = ''
+  query.codePrefix = ''
+  query.marketCap = ''
 }
 
 function normalizeCode(raw) {
@@ -190,6 +220,24 @@ function normalizeCode(raw) {
   s = s.replace(/\.(SZ|SH|BJ)$/i, '')
   s = s.replace(/^(sz|sh|bj)/i, '')
   return s
+}
+
+function matchesCodePrefix(code, prefix) {
+  const normalized = normalizeCode(code)
+  if (!prefix) return true
+  if (prefix === 'other') return normalized ? !['0', '3', '6'].includes(normalized[0]) : false
+  return normalized.startsWith(prefix)
+}
+
+function matchesMarketCap(value, bucket) {
+  const cap = Number(value)
+  if (!Number.isFinite(cap)) return false
+  const yi = 1e8
+  if (bucket === 'gte1000y') return cap >= 1000 * yi
+  if (bucket === '500y-1000y') return cap >= 500 * yi && cap < 1000 * yi
+  if (bucket === '100y-500y') return cap >= 100 * yi && cap < 500 * yi
+  if (bucket === 'lt100y') return cap < 100 * yi
+  return true
 }
 
 function goStock(row) {

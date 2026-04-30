@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { useConceptStore } from '@/stores/concept'
 
-const MACRO_POINTS = 60
+const DEFAULT_WINDOW_DAYS = 20
+
+function macroPointsForDays(days = DEFAULT_WINDOW_DAYS) {
+  const normalizedDays = Math.min(Math.max(Number(days) || DEFAULT_WINDOW_DAYS, 1), 120)
+  return Math.min(1000, Math.max(60, normalizedDays * 24))
+}
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100
@@ -515,43 +520,11 @@ function curveKeyByMode(curveMode = 'weighted') {
   return 'weightedCurve'
 }
 
-function mergeSameNameGroups(groups = []) {
-  const merged = new Map()
-
-  groups.forEach(group => {
-    const name = group.name || '未分组'
-    const current = merged.get(name) || {
-      id: `group-${merged.size + 1}`,
-      name,
-      items: [],
-      count: 0,
-      representativeCurve: [],
-      avgChange: 0,
-      avgEqualChange: 0,
-      avgSpread: 0
-    }
-    current.items = current.items.concat(group.items || [])
-    current.count = current.items.length
-    current.representativeCurve = avgSeries(current.items.map(item => item.curve))
-    current.avgChange = current.count
-      ? round2(current.items.reduce((sum, item) => sum + Number(item.weightedReturn || 0), 0) / current.count)
-      : 0
-    current.avgEqualChange = current.count
-      ? round2(current.items.reduce((sum, item) => sum + Number(item.equalReturn || 0), 0) / current.count)
-      : 0
-    current.avgSpread = current.count
-      ? round2(current.items.reduce((sum, item) => sum + Number(item.leaderSpread || 0), 0) / current.count)
-      : 0
-    merged.set(name, current)
-  })
-
-  const order = { 共振走强: 1, 龙头拉动: 2, 弱势回落: 3 }
-  return [...merged.values()]
-    .filter(group => group.count > 0)
-    .sort((a, b) => (order[a.name] || 99) - (order[b.name] || 99) || Number(b.avgChange || 0) - Number(a.avgChange || 0))
+function autoClusterCount(items = []) {
+  return items.length > 1 ? 2 : 1
 }
 
-function clusterConcepts(items = [], curveMode = 'weighted') {
+function clusterConcepts(items = [], curveMode = 'weighted', clusterCount = 'auto') {
   if (!items.length) return []
   if (items.length <= 2) {
     const curveKey = curveKeyByMode(curveMode)
@@ -580,7 +553,10 @@ function clusterConcepts(items = [], curveMode = 'weighted') {
   const scaledFeatures = robustScale(featureMatrix)
   const projectedFeatures = pcaProject(scaledFeatures, 4)
   const distances = buildDistanceMatrix(items, projectedFeatures)
-  const targetK = Math.min(3, Math.max(1, items.length))
+  const requestedK = clusterCount === 'auto'
+    ? autoClusterCount(items)
+    : Number(clusterCount)
+  const targetK = Math.min(Math.max(Number.isFinite(requestedK) ? requestedK : autoClusterCount(items), 1), items.length)
   const result = runKMedoids(distances, targetK)
   const curveKey = curveKeyByMode(curveMode)
   const groups = new Map()
@@ -622,15 +598,17 @@ function clusterConcepts(items = [], curveMode = 'weighted') {
     delete rest.index
     return {
       ...rest,
-      name: names[index]
+      name: `第${index + 1}类·${names[index]}`
     }
   })
-  return mergeSameNameGroups(namedGroups)
+  return namedGroups
 }
 
 export const useConceptMacroStore = defineStore('conceptMacro', {
   state: () => ({
     curveMode: 'weighted',
+    windowDays: DEFAULT_WINDOW_DAYS,
+    clusterCount: 'auto',
     selectedCategoryId: '',
     detailSearch: '',
     detailSort: 'changeDesc',
@@ -646,13 +624,17 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
       return conceptStore.conceptOverviewAll || []
     },
 
+    samplePoints() {
+      return macroPointsForDays(this.windowDays)
+    },
+
     rawCurveRows() {
       const result = {}
 
       ;(this.overviewItems || []).forEach(item => {
         const id = String(item?.id || '')
         if (!id) return
-        const curve = normalizeCurveRows(this.macroById[id]?.curve || []).slice(-MACRO_POINTS)
+        const curve = normalizeCurveRows(this.macroById[id]?.curve || []).slice(-this.samplePoints)
         if (curve.length) result[id] = curve
       })
 
@@ -660,7 +642,7 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
     },
 
     axisTimestamps() {
-      return buildAxisTimestamps(Object.values(this.rawCurveRows || {}), MACRO_POINTS)
+      return buildAxisTimestamps(Object.values(this.rawCurveRows || {}), this.samplePoints)
     },
 
     xAxisLabels() {
@@ -766,7 +748,7 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
         items.push(clusterItem)
       })
 
-      return clusterConcepts(items, this.curveMode)
+      return clusterConcepts(items, this.curveMode, this.clusterCount)
     },
 
     selectedCategory() {
@@ -830,7 +812,7 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
 
         const results = await Promise.allSettled(
           targets.map(async id => {
-            const row = await conceptStore.fetchConceptMacro(id, MACRO_POINTS)
+            const row = await conceptStore.fetchConceptMacro(id, this.samplePoints, this.windowDays)
             return [id, row]
           })
         )
@@ -866,6 +848,15 @@ export const useConceptMacroStore = defineStore('conceptMacro', {
     setCategoryByChartName(name) {
       const hit = (this.categories || []).find(item => `${item.name} (${item.count})` === name)
       if (hit) this.selectedCategoryId = hit.id
+    },
+
+    setWindowDays(days) {
+      const nextDays = Math.min(Math.max(Number(days) || DEFAULT_WINDOW_DAYS, 1), 120)
+      if (nextDays === this.windowDays) return
+      this.windowDays = nextDays
+      this.loaded = false
+      this.macroById = {}
+      this.selectedCategoryId = ''
     },
 
   }

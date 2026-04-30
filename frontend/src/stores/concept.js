@@ -260,8 +260,8 @@ export const useConceptStore = defineStore('concept', {
       return this.upsertConcept(row)
     },
 
-    async fetchConceptMacro(id, limit = 240) {
-      return apiGet(`/api/concepts/${encodeURIComponent(id)}/macro?limit=${encodeURIComponent(limit)}`)
+    async fetchConceptMacro(id, limit = 240, days = 20) {
+      return apiGet(`/api/concepts/${encodeURIComponent(id)}/macro?limit=${encodeURIComponent(limit)}&days=${encodeURIComponent(days)}`)
     },
 
     async refreshConceptMacros(ids = [], limit = 240) {

@@ -700,8 +700,13 @@ def remove_concept(concept_id: str, user: dict = Depends(require_current_user), 
 
 
 @app.get("/api/concepts/{concept_id}/macro")
-def get_concept_macro_api(concept_id: str, limit: int = 240, user: dict | None = Depends(optional_current_user)) -> dict:
-    row = fetch_concept_macro(concept_id, min(max(limit, 20), 1000), user_id=user["id"] if user else None)
+def get_concept_macro_api(concept_id: str, limit: int = 240, days: int = 20, user: dict | None = Depends(optional_current_user)) -> dict:
+    row = fetch_concept_macro(
+        concept_id,
+        min(max(limit, 20), 1000),
+        days=min(max(days, 1), 120),
+        user_id=user["id"] if user else None,
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="concept not found")
     return {"data": row}

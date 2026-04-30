@@ -3,6 +3,25 @@
     <div class="macro-head">
       <div class="macro-title">概念指数强度总览</div>
       <div class="macro-controls">
+        <div class="control-item">
+          <el-select
+            v-model="windowDays"
+            size="small"
+            class="days-input"
+          >
+            <el-option label="10日" :value="10" />
+            <el-option label="20日" :value="20" />
+            <el-option label="30日" :value="30" />
+          </el-select>
+        </div>
+        <el-select v-model="clusterCount" size="small" class="cluster-select">
+          <el-option label="自动聚类" value="auto" />
+          <el-option label="2 类" :value="2" />
+          <el-option label="3 类" :value="3" />
+          <el-option label="4 类" :value="4" />
+          <el-option label="5 类" :value="5" />
+          <el-option label="8 类" :value="8" />
+        </el-select>
         <el-segmented v-model="curveMode" :options="modeOptions" size="small" />
         <el-tooltip placement="bottom-end" effect="light" popper-class="macro-mode-tip">
           <template #content>
@@ -113,6 +132,14 @@ const { categories, categoryChartSeries, detailChartSeries, detailItems, selecte
 const curveMode = computed({
   get: () => macroStore.curveMode,
   set: (v) => { macroStore.curveMode = v }
+})
+const windowDays = computed({
+  get: () => macroStore.windowDays,
+  set: (v) => { macroStore.setWindowDays(v) }
+})
+const clusterCount = computed({
+  get: () => macroStore.clusterCount,
+  set: (v) => { macroStore.clusterCount = v }
 })
 const detailSearch = computed({
   get: () => macroStore.detailSearch,
@@ -239,11 +266,19 @@ onMounted(async () => {
   window.addEventListener('resize', onResize)
 })
 
-watch([categories, curveMode], () => {
+watch([categories, curveMode, clusterCount], () => {
   macroStore.ensureSelectedCategory()
   renderCategoryChart()
   renderDetailChart()
 }, { deep: true })
+
+watch(windowDays, async () => {
+  await macroStore.fetchMacroData().catch(() => null)
+  macroStore.ensureSelectedCategory()
+  await nextTick()
+  renderCategoryChart()
+  renderDetailChart()
+})
 
 watch([detailItems, detailSort, detailSearch], () => {
   renderDetailChart()
@@ -287,6 +322,29 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.control-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.control-label {
+  color: #606266;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.days-input {
+  width: 112px;
+}
+
+.cluster-select {
+  width: 104px;
 }
 
 .help-btn {

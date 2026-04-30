@@ -119,33 +119,89 @@
         </div>
 
         <!-- 筛选摘要 -->
-        <div class="filter-pill" id="tour-filter-pill">
-          <span class="filter-title">筛选</span>
-          <span class="filter-text" :title="summaryPillText">{{ summaryPillText }}</span>
+        <div ref="filterPopRef" class="filter-pop-wrap" id="tour-filter-pill">
+          <div class="filter-pill">
+            <span class="filter-title">筛选</span>
+            <span class="filter-text" :title="summaryPillText">{{ summaryPillText }}</span>
 
-          <el-button
-            v-if="newsConceptFilterIds.length"
-            link
-            type="warning"
-            class="filter-link"
-            @click="clearNewsConceptFilter"
-          >
-            清空新闻关联
-          </el-button>
+            <el-button
+              v-if="newsConceptFilterIds.length"
+              link
+              type="warning"
+              class="filter-link"
+              @click="clearNewsConceptFilter"
+            >
+              清空新闻关联
+            </el-button>
 
-          <el-button
-            link
-            type="info"
-            class="filter-link"
-            @click="clearOnlyFilters"
-            :disabled="!hasAnyFilter"
-          >
-            清空筛选
-          </el-button>
+            <el-button
+              link
+              type="info"
+              class="filter-link"
+              @click="clearOnlyFilters"
+              :disabled="!hasAnyFilter"
+            >
+              清空筛选
+            </el-button>
 
-          <el-button link type="primary" class="filter-link" @click="filterVisible = true">
-            筛选
-          </el-button>
+            <el-button link type="primary" class="filter-link" @click="toggleFilterPanel">
+              筛选
+            </el-button>
+          </div>
+
+          <div v-if="filterVisible" class="filter-pop-panel">
+            <div class="filter-form">
+              <div class="f-grid">
+                <div class="f-item">
+                  <div class="f-label">涨跌幅（%）</div>
+                  <div class="f-ctrl">
+                    <el-input-number v-model="draftFilters.minChange" :min="-20" :max="20" :step="0.5" controls-position="right" placeholder="≥" />
+                    <span class="to">~</span>
+                    <el-input-number v-model="draftFilters.maxChange" :min="-20" :max="20" :step="0.5" controls-position="right" placeholder="≤" />
+                  </div>
+                </div>
+
+                <div class="f-item">
+                  <div class="f-label">成交额（亿）</div>
+                  <div class="f-ctrl">
+                    <el-input-number v-model="draftFilters.minAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≥" />
+                    <span class="to">~</span>
+                    <el-input-number v-model="draftFilters.maxAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≤" />
+                  </div>
+                </div>
+
+                <div class="f-item">
+                  <div class="f-label">涨跌额</div>
+                  <div class="f-ctrl">
+                    <el-input-number v-model="draftFilters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
+                    <span class="to">~</span>
+                    <el-input-number v-model="draftFilters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
+                  </div>
+                </div>
+
+                <div class="f-item">
+                  <div class="f-label">上涨占比（%）</div>
+                  <div class="f-ctrl">
+                    <el-slider v-model="draftUpRatioRangePct" range :min="0" :max="100" :step="5" show-input />
+                  </div>
+                </div>
+
+                <div class="f-item">
+                  <div class="f-label">波动率 / 20日回撤</div>
+                  <div class="f-ctrl">
+                    <el-input-number v-model="draftFilters.maxVolatility" :min="0" :max="60" :step="1" controls-position="right" placeholder="波动≤" />
+                    <span class="to">/</span>
+                    <el-input-number v-model="draftFilters.maxDrawdown20d" :min="-60" :max="0" :step="1" controls-position="right" placeholder="回撤≥" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="f-actions">
+                <el-button @click="resetDraftFilters">一键清空</el-button>
+                <el-button type="primary" @click="applyDraftFilters">完成</el-button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -312,61 +368,6 @@
       @saved="onSaved"
     />
 
-     <el-drawer v-model="filterVisible" title="筛选" size="500px">
-      <div class="filter-form">
-        <div class="f-grid">
-          <div class="f-item">
-            <div class="f-label">涨跌幅（%）</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minChange" :min="-20" :max="20" :step="0.5" controls-position="right" placeholder="≥" />
-              <span class="to">~</span>
-              <el-input-number v-model="homeFilter.filters.maxChange" :min="-20" :max="20" :step="0.5" controls-position="right" placeholder="≤" />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">成交额（亿）</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≥" />
-              <span class="to">~</span>
-              <el-input-number v-model="homeFilter.filters.maxAmountY" :min="0" :max="200" :step="1" controls-position="right" placeholder="≤" />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">涨跌额</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.minChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≥" />
-              <span class="to">~</span>
-              <el-input-number v-model="homeFilter.filters.maxChangeAmount" :min="-20" :max="20" :step="0.1" controls-position="right" placeholder="≤" />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">上涨占比（%）</div>
-            <div class="f-ctrl">
-              <el-slider v-model="upRatioRangePct" range :min="0" :max="100" :step="5" show-input />
-            </div>
-          </div>
-
-          <div class="f-item">
-            <div class="f-label">波动率 / 20日回撤</div>
-            <div class="f-ctrl">
-              <el-input-number v-model="homeFilter.filters.maxVolatility" :min="0" :max="60" :step="1" controls-position="right" placeholder="波动≤" />
-              <span class="to">/</span>
-              <el-input-number v-model="homeFilter.filters.maxDrawdown20d" :min="-60" :max="0" :step="1" controls-position="right" placeholder="回撤≥" />
-            </div>
-          </div>
-        </div>
-
-        <div class="f-actions">
-          <el-button @click="resetFilters">一键清空</el-button>
-          <el-button type="primary" @click="filterVisible = false">完成</el-button>
-        </div>
-      </div>
-    </el-drawer>
-
-
     <SaveStrategyDialog
       v-model="saveDialogVisible"
       type="select"
@@ -417,6 +418,7 @@ function requireLogin() {
 
 onMounted(() => {
   autoStartHomeTourOnce({ router })
+  document.addEventListener('pointerdown', onFilterOutsideClick)
 })
 
 /** ✅ 用于定位/高亮新建项 */
@@ -460,6 +462,7 @@ const locateConceptCard = async (id) => {
 
 onBeforeUnmount(() => {
   if (focusTimer) clearTimeout(focusTimer)
+  document.removeEventListener('pointerdown', onFilterOutsideClick)
 })
 
 /** ✅ 新闻关联筛选（统一走 store，强制 string 化） */
@@ -549,23 +552,70 @@ const ensureFilterShape = () => {
 }
 ensureFilterShape()
 
+function emptyHomeFilters() {
+  return {
+    minChange: null,
+    maxChange: null,
+    minChangeAmount: null,
+    maxChangeAmount: null,
+    minAmountY: null,
+    maxAmountY: null,
+    minUpRatio: null,
+    maxUpRatio: null,
+    maxVolatility: null,
+    maxDrawdown20d: null
+  }
+}
+
+function normalizedFilterCopy(source = {}) {
+  return { ...emptyHomeFilters(), ...(source || {}) }
+}
+
+const draftFilters = ref(normalizedFilterCopy(homeFilter.filters))
+
 /** 上涨占比 range slider（store 用 0~1） */
-const upRatioRangePct = computed({
+const draftUpRatioRangePct = computed({
   get: () => {
-    const f = homeFilter.filters
+    const f = draftFilters.value
     const min = f.minUpRatio == null ? 0 : Math.round(Number(f.minUpRatio) * 100)
     const max = f.maxUpRatio == null ? 100 : Math.round(Number(f.maxUpRatio) * 100)
     return [min, max]
   },
   set: (arr) => {
     const [min, max] = Array.isArray(arr) ? arr : [0, 100]
-    homeFilter.filters.minUpRatio = min === 0 ? null : Number(min) / 100
-    homeFilter.filters.maxUpRatio = max === 100 ? null : Number(max) / 100
+    draftFilters.value.minUpRatio = min === 0 ? null : Number(min) / 100
+    draftFilters.value.maxUpRatio = max === 100 ? null : Number(max) / 100
   }
 })
 
 /** 筛选抽屉 */
 const filterVisible = ref(false)
+const filterPopRef = ref(null)
+const toggleFilterPanel = () => {
+  if (!filterVisible.value) {
+    draftFilters.value = normalizedFilterCopy(homeFilter.filters)
+    filterVisible.value = true
+    return
+  }
+  filterVisible.value = false
+}
+
+const resetDraftFilters = () => {
+  draftFilters.value = emptyHomeFilters()
+}
+
+const applyDraftFilters = () => {
+  homeFilter.filters = normalizedFilterCopy(draftFilters.value)
+  ensureFilterShape()
+  filterVisible.value = false
+}
+
+function onFilterOutsideClick(event) {
+  if (!filterVisible.value) return
+  const root = filterPopRef.value
+  if (root && !root.contains(event.target)) filterVisible.value = false
+}
+
 const resetFilters = () => {
   const f = homeFilter.filters
   f.minChange = null
@@ -584,6 +634,7 @@ const resetFilters = () => {
   delete f.minSpike5m
   f.maxVolatility = null
   f.maxDrawdown20d = null
+  draftFilters.value = normalizedFilterCopy(f)
 }
 
 /** 排序 */
@@ -1290,6 +1341,11 @@ const fmtUpdateTime = (v) => {
   color:#303133;
 }
 
+.filter-pop-wrap{
+  position: relative;
+  min-width: 280px;
+  max-width: 980px;
+}
 .filter-pill{
   display:flex;
   align-items:center;
@@ -1299,8 +1355,6 @@ const fmtUpdateTime = (v) => {
   background: rgba(0,0,0,.03);
   border: 1px solid rgba(0,0,0,.06);
   font-size: 12px;
-  min-width: 280px;
-  max-width: 980px;
 }
 .filter-title{ font-weight: 900; color:#606266; flex: 0 0 auto; }
 .filter-text{
@@ -1312,6 +1366,18 @@ const fmtUpdateTime = (v) => {
   flex: 1 1 auto;
 }
 .filter-link{ flex: 0 0 auto; }
+.filter-pop-panel{
+  position:absolute;
+  right:0;
+  top: calc(100% + 10px);
+  z-index: 30;
+  width: min(400px, calc(100vw - 32px));
+  padding: 28px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, .10);
+  background:#fff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, .16);
+}
 
 /* 卡片列表 */
 .grid{ margin-top: 8px; }
@@ -1445,11 +1511,13 @@ const fmtUpdateTime = (v) => {
 }
 
 /* 筛选 */
-.filter-form{ display:flex; flex-direction:column; gap:12px; margin-left: 20px; }
+.filter-form{ display:flex; flex-direction:column; gap:12px; }
 .f-grid{ display:flex; flex-direction:column; gap: 14px; }
 .f-item{ display:flex; flex-direction:column; gap: 8px; }
 .f-label{ font-size:12px; font-weight:900; color:#303133; }
 .f-ctrl{ display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
+.f-ctrl :deep(.el-input-number){ width: 164px; }
+.f-ctrl :deep(.el-slider){ min-width: 100%; }
 .to{ color:#909399; font-weight: 900; }
 
 .rank{

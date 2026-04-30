@@ -85,9 +85,6 @@
             </div>
 
             <div class="fav-actions" @click.stop>
-              <el-button class="btn-act" size="small" plain type="primary" @click="goConcept(c.id)">
-                查看
-              </el-button>
               <el-button
                 v-if="c.editable"
                 class="btn-act"
@@ -97,14 +94,8 @@
               >
                 编辑
               </el-button>
-              <el-button
-                class="btn-act"
-                size="small"
-                plain
-                type="danger"
-                @click="unfavoriteConcept(c)"
-              >
-                删除
+              <el-button link class="fav-star-btn" title="取消收藏" @click="unfavoriteConcept(c)">
+                <el-icon class="fav-star-on"><StarFilled /></el-icon>
               </el-button>
             </div>
           </div>
@@ -196,17 +187,8 @@
             </div>
 
             <div class="fav-actions" @click.stop>
-              <el-button class="btn-act" size="small" plain type="primary" @click="goStock(s.code)">
-                查看
-              </el-button>
-              <el-button
-                class="btn-act"
-                size="small"
-                plain
-                type="danger"
-                @click="unfavoriteStock(s.code)"
-              >
-                删除
+              <el-button link class="fav-star-btn" title="取消收藏" @click="unfavoriteStock(s.code)">
+                <el-icon class="fav-star-on"><StarFilled /></el-icon>
               </el-button>
             </div>
           </div>
@@ -789,10 +771,10 @@ const fmtPrice = (v) => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 .fav-foot{
   flex-shrink: 0;
@@ -815,28 +797,29 @@ const fmtPrice = (v) => {
   background: rgba(47, 128, 237, .12);
 }
 
-/* 卡片 */
+/* 列表项 */
 .fav-item{
-  background:#fff;
-  border-radius: 12px;
-  border: 1px solid rgba(148,163,184,.24);
-  box-shadow: 0 6px 12px rgba(15,23,42,.04);
-  min-height: 126px;
+  background: transparent;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(148,163,184,.18);
+  box-shadow: none;
+  min-height: 48px;
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  align-items: stretch;
   cursor: pointer;
   transition: .12s ease;
   box-sizing: border-box;
   overflow: hidden;
 }
 .fav-item:hover{
-  border-color: rgba(64,158,255,.24);
-  box-shadow: 0 10px 18px rgba(15,23,42,.08);
+  background: rgba(47,128,237,.05);
+  box-shadow: none;
 }
 .fav-item.active{
-  box-shadow: inset 0 0 0 1px rgba(64,158,255,.28);
-  background: rgba(47,128,237,.03);
+  box-shadow: inset 3px 0 0 rgba(64,158,255,.72);
+  background: rgba(47,128,237,.08);
 }
 .fav-item.signal-buy{
   border-left: 3px solid rgba(245,108,108,.72);
@@ -847,11 +830,13 @@ const fmtPrice = (v) => {
 .fav-main{
   flex: 1 1 auto;
   min-height: 0;
-  padding: 10px 10px 8px;
+  padding: 8px 10px 8px 22px;
+  display: grid;
+  gap: 4px;
 }
 .fav-main-top{
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
@@ -869,44 +854,62 @@ const fmtPrice = (v) => {
   border: 1px solid rgba(45,212,191,.34);
 }
 .fav-metrics{
-  margin-top: 8px;
-  display: grid;
-  gap: 6px;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 .metric-row{
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-width: 0;
 }
 .metric-label{
-  font-size: 12px;
+  font-size: 11px;
   color: #607d8b;
   font-weight: 700;
   white-space: nowrap;
 }
 .fav-actions{
-  border-top: 1px dashed rgba(148,163,184,.32);
-  padding: 8px;
+  border-top: 0;
+  border-left: 0;
+  padding: 6px;
   display:flex;
   flex: 0 0 auto;
-  flex-wrap: nowrap;
-  gap: 6px;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: center;
+  justify-content: center;
+  width: 42px;
 }
 .btn-act{
-  height: 26px !important;
-  width: auto;
-  padding: 0 8px !important;
-  border-radius: 10px !important;
+  height: 22px !important;
+  width: 42px;
+  padding: 0 4px !important;
+  border-radius: 7px !important;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
+}
+.fav-star-btn{
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fav-star-on{
+  font-size: 17px;
+  color: #f5b301;
+  filter: drop-shadow(0 1px 2px rgba(245, 179, 1, .25));
 }
 
 /* 名称 */
 .name-main{
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 13px;
+  font-weight: 800;
   color: #1f2d3d;
   display: flex;
   align-items: baseline;

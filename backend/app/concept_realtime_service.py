@@ -166,10 +166,12 @@ def fetch_concept_realtime_snapshot(concept_id: str, user_id: int | None = None)
     return _build_concept_snapshot(rows[0])
 
 
-def fetch_concept_macro(concept_id: str, limit: int = 240, user_id: int | None = None) -> dict | None:
+def fetch_concept_macro(concept_id: str, limit: int = 240, days: int = 20, user_id: int | None = None) -> dict | None:
     concept = fetch_concept_profile(concept_id, user_id=user_id)
     if concept is None:
         return None
+    normalized_days = min(max(int(days or 20), 1), 120)
+    normalized_limit = min(max(int(limit or 240), 20), 1000)
 
     sql = """
         WITH concept_minutes AS (
@@ -184,7 +186,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240, user_id: int | None =
             FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
-              AND st.ts >= NOW() - INTERVAL '20 days'
+              AND st.ts >= NOW() - (%s * INTERVAL '1 day')
               AND st.ts <= NOW()
             GROUP BY st.ts
         ),
@@ -234,7 +236,7 @@ def fetch_concept_macro(concept_id: str, limit: int = 240, user_id: int | None =
             FROM stock_time_sharing_compat st
             JOIN concept_stocks cs ON cs.stock_code = st.stock_code
             WHERE cs.concept_id = %s
-              AND st.ts >= NOW() - INTERVAL '20 days'
+              AND st.ts >= NOW() - (%s * INTERVAL '1 day')
               AND st.ts <= NOW()
         ),
         stock_returns AS (
@@ -265,19 +267,28 @@ def fetch_concept_macro(concept_id: str, limit: int = 240, user_id: int | None =
                 COUNT(minute_return) AS active_stock_count
             FROM stock_returns
             GROUP BY ts
-            ORDER BY ts DESC
-            LIMIT %s
+        ),
+        indexed AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (ORDER BY ts ASC) AS rn,
+                COUNT(*) OVER () AS total
+            FROM concept_minutes
         )
         SELECT ts, open, close, high, low, pre_close, volume, amount, equal_return, weighted_return, up_ratio, active_stock_count
-        FROM concept_minutes
+        FROM indexed
+        WHERE total <= %s
+           OR rn = 1
+           OR rn = total
+           OR MOD(rn - 1, GREATEST(CEIL(total::numeric / %s)::int, 1)) = 0
         ORDER BY ts ASC
     """
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (concept_id,))
+            cur.execute(sql, (concept_id, normalized_days))
             row = cur.fetchone()
-            cur.execute(curve_sql, (concept_id, limit))
+            cur.execute(curve_sql, (concept_id, normalized_days, normalized_limit, normalized_limit))
             curve_rows = cur.fetchall()
 
     if not row:
