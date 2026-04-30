@@ -5,7 +5,7 @@
     </el-header>
 
     <el-container class="layout-body" :style="layoutBodyStyle">
-      <el-aside width="284px" class="layout-aside layout-aside-left" id="tour-sidebar">
+      <el-aside v-if="showLeftSidebar" width="284px" class="layout-aside layout-aside-left" id="tour-sidebar">
         <div class="aside-inner">
           <div class="aside-nav">
             <Sidebar />
@@ -69,7 +69,16 @@ export default {
       const p = this.$route.path || ''
       return p === '/home'
     },
+    showLeftSidebar() {
+      const p = this.$route.path || ''
+      return !p.startsWith('/admin')
+    },
     layoutBodyStyle() {
+      if (!this.showLeftSidebar) {
+        return {
+          gridTemplateColumns: '1fr'
+        }
+      }
       return {
         gridTemplateColumns: this.showStrategy ? '284px 1fr 248px' : '284px 1fr'
       }
@@ -77,11 +86,13 @@ export default {
     showNews() {
       const p = this.$route.path || ''
       return (
+        !p.startsWith('/admin') && (
         p === '/home' ||
         p.startsWith('/concept/') ||
         p.startsWith('/my-concept/') ||
         p === '/industry' ||
         p.startsWith('/industry/')
+        )
       )
     }
   },

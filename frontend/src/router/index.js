@@ -3,6 +3,7 @@ import Layout from '@/layout/LayoutIndex.vue'
 import MarketView from '@/views/MarketView.vue'
 import ConceptCreate from '@/views/ConceptCreate.vue'
 import StockView from '@/views/StockView.vue' // 鉁?鏂板锛氳偂绁ㄨ鎯呴〉锛堜綘鍚庨潰鍋氾級
+import AdminView from '@/views/AdminView.vue'
 
 const routes = [
   {
@@ -61,13 +62,39 @@ const routes = [
         name: 'ConceptCreate',
         component: ConceptCreate,
         meta: { title: '鏂板缓姒傚康' }
+      },
+      {
+        path: 'admin',
+        name: 'Admin',
+        component: AdminView,
+        meta: { title: '绯荤粺绠＄悊', requiresAdmin: true }
       }
     ]
   }
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes
 })
+
+router.beforeEach((to, _from, next) => {
+  if (!to.meta?.requiresAdmin) {
+    next()
+    return
+  }
+  try {
+    const raw = localStorage.getItem('auth_user')
+    const user = raw ? JSON.parse(raw) : null
+    if (user?.role === 'admin') {
+      next()
+      return
+    }
+  } catch {
+    // Ignore invalid local storage and fall back to redirect.
+  }
+  next('/home')
+})
+
+export default router
 

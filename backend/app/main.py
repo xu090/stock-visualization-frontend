@@ -1,9 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import List
+from typing import Any, List
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from app.config import AUTO_BOOTSTRAP_CONCEPTS
@@ -17,6 +17,12 @@ from app.auth_service import (
     require_admin,
     require_current_user,
     update_user_account,
+)
+from app.operation_log_service import (
+    ensure_operation_log_table,
+    fetch_operation_logs,
+    get_operation_log_stats,
+    log_operation,
 )
 from app.concept_analysis_service import fetch_concept_analysis
 from app.concept_seed import bootstrap_default_concepts, ensure_default_concepts
@@ -123,6 +129,45 @@ class ConceptPatch(BaseModel):
     stockCodes: list[str] | None = None
     algorithm: str | None = None
     favorite: bool | None = None
+    enabled: bool | None = None
+
+
+def _log_user_action(
+    user: dict | None,
+    action: str,
+    resource: str,
+    details: str,
+    resource_id: str | None = None,
+    result: str = "success",
+    error_message: str | None = None,
+    request: Any = None,
+) -> None:
+    """记录用户操作日志"""
+    if not user:
+        return
+
+    ip = None
+    user_agent = None
+
+    if request:
+        # 尝试从请求中获取IP和User-Agent
+        client_host = request.client.host if request.client else None
+        ip = client_host
+        user_agent = request.headers.get("user-agent")
+
+    log_operation(
+        user_id=user.get("id"),
+        username=user.get("username"),
+        role=user.get("role"),
+        action=action,
+        resource=resource,
+        resource_id=resource_id,
+        details=details,
+        ip=ip,
+        user_agent=user_agent,
+        result=result,
+        error_message=error_message,
+    )
 
 
 def normalize_code(raw: str | None) -> str:
@@ -300,6 +345,7 @@ async def lifespan(_app: FastAPI):
     await asyncio.to_thread(ensure_favorite_stocks_table)
     await asyncio.to_thread(ensure_stock_time_sharing_compat_view)
     await asyncio.to_thread(ensure_query_indexes)
+    await asyncio.to_thread(ensure_operation_log_table)
 
     try:
         yield
@@ -324,23 +370,68 @@ def health() -> dict:
 
 
 @app.post("/api/auth/register")
-def register_api(payload: AuthPayload) -> dict:
+def register_api(payload: AuthPayload, request: Request = None) -> dict:
     try:
         user = create_user(payload.username, payload.password)
+        _log_user_action(
+            user=user,
+            action="register",
+            resource="user",
+            details=f"用户注册: {payload.username}",
+            resource_id=str(user.get("id")),
+            request=request,
+        )
     except FileExistsError as exc:
+        # 尝试记录日志，但用户可能不存在
+        _log_user_action(
+            user={"username": payload.username, "role": "unknown", "id": None},
+            action="register",
+            resource="user",
+            details=f"用户注册失败: {payload.username} (用户已存在)",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
+        _log_user_action(
+            user={"username": payload.username, "role": "unknown", "id": None},
+            action="register",
+            resource="user",
+            details=f"用户注册失败: {payload.username} (参数错误)",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     token = create_session(user["id"])
     return {"data": {"user": user, "token": token}}
 
 
 @app.post("/api/auth/login")
-def login_api(payload: AuthPayload) -> dict:
+def login_api(payload: AuthPayload, request: Request = None) -> dict:
     user = authenticate_user(payload.username, payload.password)
     if not user:
+        # 记录失败的登录尝试
+        _log_user_action(
+            user={"username": payload.username, "role": "unknown", "id": None},
+            action="login",
+            resource="user",
+            details=f"登录失败: {payload.username} (用户名或密码错误)",
+            result="failed",
+            error_message="用户名或密码错误",
+            request=request,
+        )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     token = create_session(user["id"])
+    _log_user_action(
+        user=user,
+        action="login",
+        resource="user",
+        details=f"用户登录: {payload.username}",
+        resource_id=str(user.get("id")),
+        request=request,
+    )
     return {"data": {"user": user, "token": token}}
 
 
@@ -370,9 +461,17 @@ def update_me_api(payload: AuthUpdatePayload, user: dict = Depends(require_curre
 
 
 @app.post("/api/auth/logout")
-def logout_api(user: dict = Depends(require_current_user), authorization: str | None = Header(default=None)) -> dict:
+def logout_api(user: dict = Depends(require_current_user), authorization: str | None = Header(default=None), request: Request = None) -> dict:
     token = str(authorization or "").removeprefix("Bearer ").strip()
     delete_session(token)
+    _log_user_action(
+        user=user,
+        action="logout",
+        resource="user",
+        details=f"用户登出: {user.get('username')}",
+        resource_id=str(user.get("id")),
+        request=request,
+    )
     return {"ok": True, "data": {"user": user}}
 
 
@@ -456,12 +555,38 @@ def get_concepts_overview(user: dict | None = Depends(optional_current_user)) ->
 
 
 @app.post("/api/concepts")
-def post_concept(payload: ConceptPayload, user: dict = Depends(require_current_user)) -> dict:
+def post_concept(payload: ConceptPayload, user: dict = Depends(require_current_user), request: Request = None) -> dict:
     try:
         row = create_user_concept(payload.model_dump(), user_id=user["id"])
+        _log_user_action(
+            user=user,
+            action="create",
+            resource="concept",
+            details=f"创建概念'{payload.name}'",
+            resource_id=row.get("id") if row else None,
+            request=request,
+        )
     except FileExistsError as exc:
+        _log_user_action(
+            user=user,
+            action="create",
+            resource="concept",
+            details=f"创建概念'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
+        _log_user_action(
+            user=user,
+            action="create",
+            resource="concept",
+            details=f"创建概念'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"data": row}
 
@@ -484,25 +609,92 @@ def get_concept(concept_id: str, user: dict | None = Depends(optional_current_us
 
 
 @app.patch("/api/concepts/{concept_id}")
-def patch_concept(concept_id: str, payload: ConceptPatch, user: dict = Depends(require_current_user)) -> dict:
+def patch_concept(concept_id: str, payload: ConceptPatch, user: dict = Depends(require_current_user), request: Request = None) -> dict:
     try:
         row = update_user_concept(concept_id, payload.model_dump(exclude_none=True), user_id=user["id"])
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="concept",
+            details=f"更新概念'{concept_id}'",
+            resource_id=concept_id,
+            request=request,
+        )
     except PermissionError as exc:
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="concept",
+            details=f"更新概念'{concept_id}'失败",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="concept",
+            details=f"更新概念'{concept_id}'失败",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if row is None:
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="concept",
+            details=f"更新概念'{concept_id}'失败-概念不存在",
+            resource_id=concept_id,
+            result="failed",
+            error_message="concept not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="concept not found")
     return {"data": row}
 
 
 @app.delete("/api/concepts/{concept_id}")
-def remove_concept(concept_id: str, user: dict = Depends(require_current_user)) -> dict:
+def remove_concept(concept_id: str, user: dict = Depends(require_current_user), request: Request = None) -> dict:
     try:
         deleted = delete_user_concept(concept_id, user_id=user["id"])
+        if deleted:
+            _log_user_action(
+                user=user,
+                action="delete",
+                resource="concept",
+                details=f"删除概念'{concept_id}'",
+                resource_id=concept_id,
+                request=request,
+            )
     except PermissionError as exc:
+        _log_user_action(
+            user=user,
+            action="delete",
+            resource="concept",
+            details=f"删除概念'{concept_id}'失败-权限不足",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not deleted:
+        _log_user_action(
+            user=user,
+            action="delete",
+            resource="concept",
+            details=f"删除概念'{concept_id}'失败-概念不存在",
+            resource_id=concept_id,
+            result="failed",
+            error_message="concept not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="concept not found")
     return {"ok": True}
 
@@ -601,37 +793,175 @@ def sync_db_indexes(_user: dict = Depends(require_admin)) -> dict:
     return {"ok": True, "data": result}
 
 
+@app.get("/api/admin/concepts")
+def get_admin_concepts(_user: dict = Depends(require_admin)) -> dict:
+    from app.concept_service import fetch_concept_overview
+    from app.db import get_conn
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    c.id,
+                    c.name,
+                    c.description,
+                    c.algorithm,
+                    c.editable,
+                    c.enabled,
+                    c.source,
+                    ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
+                        FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
+                    COUNT(cs.stock_code) AS stock_count
+                FROM concepts c
+                LEFT JOIN concept_stocks cs ON cs.concept_id = c.id
+                WHERE c.user_id IS NULL
+                GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.enabled, c.source
+                ORDER BY c.name ASC
+            """)
+            rows = cur.fetchall()
+
+    concepts = []
+    for row in rows:
+        concepts.append({
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "algorithm": row["algorithm"],
+            "editable": row["editable"],
+            "enabled": row["enabled"],
+            "isSystem": True,
+            "source": row["source"],
+            "stockCodes": row.get("stock_codes") or [],
+            "stockCount": row.get("stock_count") or 0,
+        })
+
+    return {"data": concepts}
+
+
 @app.post("/api/admin/concepts")
-def post_admin_concept(payload: ConceptPayload, _user: dict = Depends(require_admin)) -> dict:
+def post_admin_concept(payload: ConceptPayload, _user: dict = Depends(require_admin), request: Request = None) -> dict:
     try:
         row = create_user_concept(payload.model_dump(), user_id=None)
+        _log_user_action(
+            user=_user,
+            action="create",
+            resource="admin_concept",
+            details=f"管理员创建概念'{payload.name}'",
+            resource_id=row.get("id") if row else None,
+            request=request,
+        )
     except FileExistsError as exc:
+        _log_user_action(
+            user=_user,
+            action="create",
+            resource="admin_concept",
+            details=f"管理员创建概念'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
+        _log_user_action(
+            user=_user,
+            action="create",
+            resource="admin_concept",
+            details=f"管理员创建概念'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"data": row}
 
 
 @app.patch("/api/admin/concepts/{concept_id}")
-def patch_admin_concept(concept_id: str, payload: ConceptPatch, _user: dict = Depends(require_admin)) -> dict:
+def patch_admin_concept(concept_id: str, payload: ConceptPatch, _user: dict = Depends(require_admin), request: Request = None) -> dict:
     try:
         row = update_user_concept(concept_id, payload.model_dump(exclude_none=True), user_id=None, is_admin=True)
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_concept",
+            details=f"管理员更新概念'{concept_id}'",
+            resource_id=concept_id,
+            request=request,
+        )
     except PermissionError as exc:
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_concept",
+            details=f"管理员更新概念'{concept_id}'失败",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_concept",
+            details=f"管理员更新概念'{concept_id}'失败",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if row is None:
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_concept",
+            details=f"管理员更新概念'{concept_id}'失败-概念不存在",
+            resource_id=concept_id,
+            result="failed",
+            error_message="concept not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="concept not found")
     return {"data": row}
 
 
 @app.delete("/api/admin/concepts/{concept_id}")
-def remove_admin_concept(concept_id: str, _user: dict = Depends(require_admin)) -> dict:
+def remove_admin_concept(concept_id: str, _user: dict = Depends(require_admin), request: Request = None) -> dict:
     try:
         deleted = delete_user_concept(concept_id, user_id=None, is_admin=True)
+        if deleted:
+            _log_user_action(
+                user=_user,
+                action="delete",
+                resource="admin_concept",
+                details=f"管理员删除概念'{concept_id}'",
+                resource_id=concept_id,
+                request=request,
+            )
     except PermissionError as exc:
+        _log_user_action(
+            user=_user,
+            action="delete",
+            resource="admin_concept",
+            details=f"管理员删除概念'{concept_id}'失败-权限不足",
+            resource_id=concept_id,
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not deleted:
+        _log_user_action(
+            user=_user,
+            action="delete",
+            resource="admin_concept",
+            details=f"管理员删除概念'{concept_id}'失败-概念不存在",
+            resource_id=concept_id,
+            result="failed",
+            error_message="concept not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="concept not found")
     return {"ok": True}
 
@@ -650,12 +980,33 @@ def get_select_strategy(strategy_id: int, user: dict | None = Depends(optional_c
 
 
 @app.post("/api/select-strategies")
-def post_select_strategy(payload: SelectStrategyPayload, user: dict = Depends(require_current_user)) -> dict:
-    return {"data": create_select_strategy(payload.model_dump(), user_id=user["id"])}
+def post_select_strategy(payload: SelectStrategyPayload, user: dict = Depends(require_current_user), request: Request = None) -> dict:
+    try:
+        row = create_select_strategy(payload.model_dump(), user_id=user["id"])
+        _log_user_action(
+            user=user,
+            action="create",
+            resource="strategy",
+            details=f"创建策略'{payload.name}'",
+            resource_id=str(row.get("id")) if row else None,
+            request=request,
+        )
+        return {"data": row}
+    except Exception as exc:
+        _log_user_action(
+            user=user,
+            action="create",
+            resource="strategy",
+            details=f"创建策略'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
 
 
 @app.patch("/api/select-strategies/{strategy_id}")
-def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: dict = Depends(require_current_user)) -> dict:
+def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: dict = Depends(require_current_user), request: Request = None) -> dict:
     try:
         row = update_select_strategy(
             strategy_id,
@@ -663,16 +1014,79 @@ def patch_select_strategy(strategy_id: int, payload: SelectStrategyPatch, user: 
             user_id=user["id"],
             is_admin=user.get("role") == "admin",
         )
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="strategy",
+            details=f"更新策略'{strategy_id}'",
+            resource_id=str(strategy_id),
+            request=request,
+        )
     except PermissionError as exc:
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="strategy",
+            details=f"更新策略'{strategy_id}'失败",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if row is None:
+        _log_user_action(
+            user=user,
+            action="update",
+            resource="strategy",
+            details=f"更新策略'{strategy_id}'失败-策略不存在",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message="strategy not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="strategy not found")
     return {"data": row}
 
 
 @app.delete("/api/select-strategies/{strategy_id}")
-def remove_select_strategy(strategy_id: int, user: dict = Depends(require_current_user)) -> dict:
-    return {"ok": delete_select_strategy(strategy_id, user_id=user["id"], is_admin=user.get("role") == "admin")}
+def remove_select_strategy(strategy_id: int, user: dict = Depends(require_current_user), request: Request = None) -> dict:
+    try:
+        deleted = delete_select_strategy(strategy_id, user_id=user["id"], is_admin=user.get("role") == "admin")
+        if deleted:
+            _log_user_action(
+                user=user,
+                action="delete",
+                resource="strategy",
+                details=f"删除策略'{strategy_id}'",
+                resource_id=str(strategy_id),
+                request=request,
+            )
+    except PermissionError as exc:
+        _log_user_action(
+            user=user,
+            action="delete",
+            resource="strategy",
+            details=f"删除策略'{strategy_id}'失败-权限不足",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
+    except Exception as exc:
+        _log_user_action(
+            user=user,
+            action="delete",
+            resource="strategy",
+            details=f"删除策略'{strategy_id}'失败",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
+    return {"ok": deleted}
 
 
 @app.post("/api/admin/bootstrap/select-strategies")
@@ -680,9 +1094,61 @@ def bootstrap_select_strategy_api(_user: dict = Depends(require_admin)) -> dict:
     return {"ok": True, "data": bootstrap_select_strategies()}
 
 
+@app.get("/api/admin/select-strategies")
+def get_admin_select_strategies(_user: dict = Depends(require_admin)) -> dict:
+    from app.strategy_service import fetch_select_strategies
+    from app.db import get_conn
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    id,
+                    name,
+                    description,
+                    is_favorite,
+                    is_custom,
+                    enabled,
+                    snapshot,
+                    created_at,
+                    updated_at,
+                    user_id
+                FROM strategies
+                WHERE strategy_type = 'select' AND user_id IS NULL
+                ORDER BY id ASC
+            """)
+            rows = cur.fetchall()
+
+    from app.strategy_service import _map_strategy
+    strategies = [_map_strategy(row) for row in rows]
+
+    return {"data": strategies}
+
+
 @app.post("/api/admin/select-strategies")
-def post_admin_select_strategy(payload: SelectStrategyPayload, _user: dict = Depends(require_admin)) -> dict:
-    return {"data": create_select_strategy(payload.model_dump(), user_id=None)}
+def post_admin_select_strategy(payload: SelectStrategyPayload, _user: dict = Depends(require_admin), request: Request = None) -> dict:
+    try:
+        row = create_select_strategy(payload.model_dump(), user_id=None)
+        _log_user_action(
+            user=_user,
+            action="create",
+            resource="admin_strategy",
+            details=f"管理员创建策略'{payload.name}'",
+            resource_id=str(row.get("id")) if row else None,
+            request=request,
+        )
+        return {"data": row}
+    except Exception as exc:
+        _log_user_action(
+            user=_user,
+            action="create",
+            resource="admin_strategy",
+            details=f"管理员创建策略'{payload.name}'失败",
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
 
 
 @app.patch("/api/admin/select-strategies/{strategy_id}")
@@ -690,13 +1156,105 @@ def patch_admin_select_strategy(
     strategy_id: int,
     payload: SelectStrategyPatch,
     _user: dict = Depends(require_admin),
+    request: Request = None,
 ) -> dict:
-    row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True), user_id=None, is_admin=True)
+    try:
+        row = update_select_strategy(strategy_id, payload.model_dump(exclude_none=True), user_id=None, is_admin=True)
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_strategy",
+            details=f"管理员更新策略'{strategy_id}'",
+            resource_id=str(strategy_id),
+            request=request,
+        )
+    except Exception as exc:
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_strategy",
+            details=f"管理员更新策略'{strategy_id}'失败",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
     if row is None:
+        _log_user_action(
+            user=_user,
+            action="update",
+            resource="admin_strategy",
+            details=f"管理员更新策略'{strategy_id}'失败-策略不存在",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message="strategy not found",
+            request=request,
+        )
         raise HTTPException(status_code=404, detail="strategy not found")
     return {"data": row}
 
 
 @app.delete("/api/admin/select-strategies/{strategy_id}")
-def remove_admin_select_strategy(strategy_id: int, _user: dict = Depends(require_admin)) -> dict:
-    return {"ok": delete_select_strategy(strategy_id, user_id=None, is_admin=True)}
+def remove_admin_select_strategy(strategy_id: int, _user: dict = Depends(require_admin), request: Request = None) -> dict:
+    try:
+        deleted = delete_select_strategy(strategy_id, user_id=None, is_admin=True)
+        if deleted:
+            _log_user_action(
+                user=_user,
+                action="delete",
+                resource="admin_strategy",
+                details=f"管理员删除策略'{strategy_id}'",
+                resource_id=str(strategy_id),
+                request=request,
+            )
+    except Exception as exc:
+        _log_user_action(
+            user=_user,
+            action="delete",
+            resource="admin_strategy",
+            details=f"管理员删除策略'{strategy_id}'失败",
+            resource_id=str(strategy_id),
+            result="failed",
+            error_message=str(exc),
+            request=request,
+        )
+        raise
+    return {"ok": deleted}
+
+
+# 操作日志相关API
+@app.get("/api/admin/operation-logs")
+def get_operation_logs_api(
+    user_id: int | None = None,
+    action: str | None = None,
+    resource: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    _user: dict = Depends(require_admin),
+) -> dict:
+    """获取操作日志"""
+    print(f"[DEBUG] 获取操作日志请求 - 用户: {_user.get('username')}, 参数: user_id={user_id}, action={action}, resource={resource}, limit={limit}, offset={offset}")
+
+    logs = fetch_operation_logs(
+        user_id=user_id,
+        action=action,
+        resource=resource,
+        limit=min(max(limit, 1), 500),
+        offset=offset,
+    )
+
+    print(f"[DEBUG] 返回 {len(logs)} 条操作日志")
+
+    return {"data": logs}
+
+
+@app.get("/api/admin/operation-logs/stats")
+def get_operation_logs_stats_api(_user: dict = Depends(require_admin)) -> dict:
+    """获取操作日志统计信息"""
+    print(f"[DEBUG] 获取操作日志统计请求 - 用户: {_user.get('username')}")
+
+    stats = get_operation_log_stats()
+    print(f"[DEBUG] 统计信息: {stats}")
+
+    return {"data": stats}

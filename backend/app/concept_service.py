@@ -57,6 +57,7 @@ def ensure_user_concept_tables() -> None:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS user_id BIGINT NULL")
+            cur.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS concept_favorites (
@@ -185,7 +186,7 @@ def _fetch_sector_index_rows(sector_name: str, limit: int = 240, anchor_ts: int 
 
 
 def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[dict]:
-    sql = """
+    base_sql = """
         WITH latest_stock AS (
             SELECT DISTINCT ON (stock_code)
                 stock_code,
@@ -207,8 +208,10 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
             c.description,
             c.algorithm,
             c.editable,
+            c.user_id,
             c.favorite,
             c.source,
+            c.enabled,
             ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
                 FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
             COUNT(cs.stock_code) AS stock_count,
@@ -225,14 +228,24 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None) -> list[
         FROM concepts c
         LEFT JOIN concept_stocks cs ON cs.concept_id = c.id
         LEFT JOIN latest_stock ls ON ls.stock_code = cs.stock_code
-        WHERE (%s IS NULL OR c.id = ANY(%s))
-        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite, c.source
+        WHERE c.enabled = TRUE
+    """
+
+    if concept_ids:
+        sql = base_sql + " AND c.id = ANY(%s)"
+        params = (concept_ids,)
+    else:
+        sql = base_sql
+        params = ()
+
+    sql += """
+        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.user_id, c.favorite, c.source, c.enabled
         ORDER BY c.favorite DESC, c.editable ASC, c.name ASC
     """
-    ids = concept_ids if concept_ids else None
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (ids, ids))
+            cur.execute(sql, params)
             return cur.fetchall()
 
 
@@ -271,6 +284,8 @@ def _build_concept_realtime_snapshot(row: dict, sector_snapshot_map: dict[str, d
         "algorithm": row.get("algorithm"),
         "editable": row.get("editable"),
         "favorite": row.get("favorite"),
+        "enabled": row.get("enabled", True),
+        "isSystem": row.get("user_id") is None,
         "source": row.get("source"),
         "stockCodes": row.get("stock_codes") or [],
         "stockCount": int(stock_count or 0),
@@ -311,6 +326,8 @@ def _map_concept_row(row: dict, stock_codes: list[str] | None = None) -> dict:
         "algorithm": row["algorithm"],
         "editable": row["editable"],
         "favorite": row["favorite"],
+        "enabled": row.get("enabled", True),
+        "isSystem": row.get("user_id") is None,
         "source": row.get("source"),
     }
     if stock_codes is not None:
@@ -369,13 +386,13 @@ def fetch_concept_overview() -> list[dict]:
 def fetch_concept_detail(concept_id: str, user_id: int | None = None) -> dict | None:
     ensure_user_concept_tables()
     sql = """
-        SELECT id, name, description, algorithm, editable, favorite
+        SELECT id, name, description, algorithm, editable, favorite, enabled
         FROM concepts
         WHERE id = %s AND (user_id IS NULL OR user_id = %s)
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (concept_id,))
+            cur.execute(sql, (concept_id, user_id))
             row = cur.fetchone()
     if not row:
         return None
@@ -386,6 +403,7 @@ def fetch_concept_detail(concept_id: str, user_id: int | None = None) -> dict | 
         "algorithm": row["algorithm"],
         "editable": row["editable"],
         "favorite": row["favorite"],
+        "enabled": row["enabled"],
     }
 
 
@@ -398,6 +416,7 @@ def fetch_concept_profile(concept_id: str, user_id: int | None = None) -> dict |
             c.description,
             c.algorithm,
             c.editable,
+            c.user_id,
             CASE
                 WHEN %s::bigint IS NULL THEN c.favorite
                 ELSE COALESCE(cf.concept_id IS NOT NULL, FALSE)
@@ -446,12 +465,12 @@ def create_user_concept(payload: dict, user_id: int | None = None) -> dict:
             cur.execute(
                 """
                 INSERT INTO concepts (
-                    id, user_id, name, description, algorithm, editable, favorite, source, created_at, updated_at
+                    id, user_id, name, description, algorithm, editable, favorite, enabled, source, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, TRUE, %s, 'user', NOW(), NOW())
-                RETURNING id, name, description, algorithm, editable, favorite, source
+                VALUES (%s, %s, %s, %s, %s, TRUE, %s, TRUE, %s, NOW(), NOW())
+                RETURNING id, name, description, algorithm, editable, favorite, enabled, source, user_id
                 """,
-                (concept_id, user_id, name, description, algorithm, favorite),
+                (concept_id, user_id, name, description, algorithm, favorite, "user" if user_id is not None else "system"),
             )
             row = cur.fetchone()
             _replace_concept_stocks(cur, concept_id, stock_codes)
@@ -512,6 +531,10 @@ def update_user_concept(
             if "algorithm" in payload:
                 fields.append("algorithm = %s")
                 params.append(str(payload.get("algorithm") or "").strip())
+            if "enabled" in payload:
+                enabled = bool(payload.get("enabled"))
+                fields.append("enabled = %s")
+                params.append(enabled)
             if "favorite" in payload:
                 favorite = bool(payload.get("favorite"))
                 if user_id is None:
@@ -552,7 +575,7 @@ def update_user_concept(
                         OR user_id IS NULL
                         OR user_id = %s
                       )
-                    RETURNING id, name, description, algorithm, editable, favorite, source
+                    RETURNING id, name, description, algorithm, editable, favorite, source, user_id
                     """,
                     tuple(params + [is_admin, user_id]),
                 )
@@ -560,7 +583,7 @@ def update_user_concept(
             else:
                 cur.execute(
                     """
-                    SELECT id, name, description, algorithm, editable, favorite, source
+                    SELECT id, name, description, algorithm, editable, favorite, source, user_id
                     FROM concepts
                     WHERE id = %s
                     """,

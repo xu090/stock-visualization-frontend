@@ -56,11 +56,13 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None, user_id:
             c.description,
             c.algorithm,
             c.editable,
+            c.user_id,
             CASE
                 WHEN %s::bigint IS NULL THEN c.favorite
                 ELSE COALESCE(cf.concept_id IS NOT NULL, FALSE)
             END AS favorite,
             c.source,
+            c.enabled,
             ARRAY_AGG(cs.stock_code ORDER BY cs.sort_order ASC, cs.stock_code ASC)
                 FILTER (WHERE cs.stock_code IS NOT NULL) AS stock_codes,
             COUNT(cs.stock_code) AS stock_count,
@@ -89,9 +91,10 @@ def _fetch_concept_aggregate_rows(concept_ids: list[str] | None = None, user_id:
         LEFT JOIN latest_stock_before_anchor lsa
             ON lsa.concept_id = c.id
            AND lsa.stock_code = cs.stock_code
-        WHERE (%s::text[] IS NULL OR c.id = ANY(%s::text[]))
+        WHERE c.enabled = TRUE
+          AND (%s::text[] IS NULL OR c.id = ANY(%s::text[]))
           AND (c.user_id IS NULL OR c.user_id = %s)
-        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.favorite, c.source, cf.concept_id
+        GROUP BY c.id, c.name, c.description, c.algorithm, c.editable, c.user_id, c.favorite, c.source, cf.concept_id, c.enabled
         ORDER BY c.favorite DESC, c.editable ASC, c.name ASC
     """
     ids = concept_ids if concept_ids else None
@@ -124,6 +127,8 @@ def _build_concept_snapshot(row: dict) -> dict:
         "editable": row.get("editable"),
         "favorite": row.get("favorite"),
         "source": row.get("source"),
+        "enabled": row.get("enabled", True),
+        "isSystem": row.get("user_id") is None,
         "stockCodes": row.get("stock_codes") or [],
         "stockCount": int(row.get("stock_count") or 0),
         "activeStockCount": row.get("active_stock_count") or 0,

@@ -41,6 +41,10 @@
         新手教程
       </span>
 
+      <button v-if="auth.isAdmin" type="button" class="admin-entry" @click="goAdmin">
+        系统管理
+      </button>
+
       <button type="button" class="auth-entry" @click="openAuthDialog">
         <el-icon><User /></el-icon>
         <span>{{ auth.user?.username || '登录 / 注册' }}</span>
@@ -106,6 +110,12 @@
               修改密码
             </el-button>
           </el-form>
+        </section>
+
+        <section v-if="auth.isAdmin" class="account-card">
+          <el-button class="account-admin" plain @click="goAdmin">
+            进入系统管理台
+          </el-button>
         </section>
 
         <section class="account-card">
@@ -222,6 +232,11 @@ function openAuthDialog() {
   accountForm.newPassword = ''
   accountForm.confirmPassword = ''
   authDialogVisible.value = true
+}
+
+function goAdmin() {
+  authDialogVisible.value = false
+  router.push('/admin')
 }
 
 function toggleAuthMode() {
@@ -417,6 +432,21 @@ async function logout() {
 }
 .tour-link:active{
   opacity: 0.85;
+}
+.admin-entry{
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,.24);
+  background: rgba(15,23,42,.16);
+  color: rgba(255,255,255,.96);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.admin-entry:hover{
+  background: rgba(15,23,42,.28);
 }
 .auth-entry{
   display: inline-flex;
@@ -627,6 +657,11 @@ async function logout() {
   height: 40px;
   font-weight: 900;
   gap: 10px;
+}
+.account-admin{
+  width: 100%;
+  height: 38px;
+  font-weight: 800;
 }
 .account-logout .el-icon{
   margin-right: 8px;

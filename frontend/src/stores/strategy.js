@@ -19,6 +19,7 @@ function normalizeStrategy(item = {}) {
     desc: item.desc || item.description || '',
     isFavorite: !!item.isFavorite,
     isCustom: !!item.isCustom,
+    isSystem: item.isSystem !== false,
     enabled: item.enabled !== false,
     snapshot: item.snapshot || {}
   }

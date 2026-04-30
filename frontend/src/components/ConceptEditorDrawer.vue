@@ -205,7 +205,7 @@ const stockStore = useStockStore()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  editing: { type: Object, default: null }, // {id,name,description,algorithm,stockCodes:[]}
+  editing: { type: Object, default: null }, // {id,name,algorithm,stockCodes:[]}
   mode: { type: String, default: 'drawer' }, // 'drawer' | 'dialog'
   drawerSize: { type: String, default: '45%' },
   dialogWidth: { type: String, default: '780px' },
@@ -265,7 +265,6 @@ function pickNameByCode(code) {
 const form = ref({
   id: '',
   name: '',
-  description: '',
   algorithm: 'weighted',
   stockCodes: [] // [{code, stockName}]
 })
@@ -379,14 +378,13 @@ watch(
       form.value = {
         id: String(val.id),
         name: val.name || '',
-        description: val.description || '',
         algorithm: val.algorithm || 'weighted',
         stockCodes: codes.map((c) => ({ code: c, stockName: pickNameByCode(c) }))
       }
 
       checkedCodes.value = codes.slice()
     } else {
-      form.value = { id: '', name: '', description: '', algorithm: 'weighted', stockCodes: [] }
+      form.value = { id: '', name: '', algorithm: 'weighted', stockCodes: [] }
       checkedCodes.value = []
     }
   },
@@ -538,7 +536,6 @@ const save = () => {
   const conceptData = {
     id: form.value.id || Date.now().toString(),
     name: form.value.name,
-    description: form.value.description || '',
     algorithm: form.value.algorithm || 'weighted',
     stockCodes: form.value.stockCodes.map((s) => normalizeCode(s.code)),
     isNew,

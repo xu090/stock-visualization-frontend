@@ -292,6 +292,7 @@ def _map_strategy(row: dict[str, Any]) -> dict[str, Any]:
         "isFavorite": row["is_favorite"],
         "enabled": row["enabled"],
         "isCustom": row["is_custom"],
+        "isSystem": row.get("user_id") is None,
         "snapshot": row["snapshot"],
         "createdAt": int(row["created_at"].timestamp() * 1000) if row["created_at"] else None,
         "updatedAt": int(row["updated_at"].timestamp() * 1000) if row["updated_at"] else None,
@@ -365,9 +366,9 @@ def fetch_select_strategies(user_id: int | None = None) -> list[dict[str, Any]]:
             if user_id is None:
                 cur.execute(
                     """
-                    SELECT id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at
+                    SELECT id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at, user_id
                     FROM strategies
-                    WHERE strategy_type = 'select' AND user_id IS NULL
+                    WHERE strategy_type = 'select' AND user_id IS NULL AND enabled = TRUE
                     ORDER BY is_favorite DESC, is_custom DESC, id ASC
                     """
                 )
@@ -386,12 +387,14 @@ def fetch_select_strategies(user_id: int | None = None) -> list[dict[str, Any]]:
                         s.enabled,
                         s.snapshot,
                         s.created_at,
-                        s.updated_at
+                        s.updated_at,
+                        s.user_id
                     FROM strategies s
                     LEFT JOIN user_strategy_favorites usf
                       ON usf.strategy_id = s.id
                      AND usf.user_id = %s
                     WHERE s.strategy_type = 'select'
+                      AND s.enabled = TRUE
                       AND (
                         (s.user_id IS NULL AND s.is_custom = FALSE)
                         OR s.user_id = %s
@@ -409,7 +412,7 @@ def fetch_select_strategy(strategy_id: int, user_id: int | None = None) -> dict[
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at
+                SELECT id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at, user_id
                 FROM strategies
                 WHERE strategy_type = 'select'
                   AND id = %s
@@ -439,14 +442,14 @@ def create_select_strategy(payload: dict[str, Any], user_id: int | None = None) 
                     updated_at
                 )
                 VALUES ('select', %s, %s, %s, %s, %s, %s, %s::jsonb, NOW(), NOW())
-                RETURNING id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at
+                RETURNING id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at, user_id
                 """,
                 (
                     user_id,
                     payload["name"],
                     payload.get("desc"),
                     payload.get("isFavorite", False),
-                    payload.get("isCustom", True),
+                    payload.get("isCustom", False),
                     payload.get("enabled", True),
                     _dumps_snapshot(payload.get("snapshot")),
                 ),
@@ -521,7 +524,7 @@ def update_select_strategy(
                     (%s AND user_id IS NULL)
                     OR user_id = %s
                   )
-                RETURNING id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at
+                RETURNING id, name, description, is_favorite, is_custom, enabled, snapshot, created_at, updated_at, user_id
                 """,
                 (
                     merged["name"],

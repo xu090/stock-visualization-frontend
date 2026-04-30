@@ -565,7 +565,6 @@ const editConceptFromSidebar = (concept) => {
   editingConcept.value = {
     id: String(concept.id),
     name: concept.name || '',
-    description: concept.description || '',
     stockCodes: Array.isArray(concept.stockCodes) ? concept.stockCodes : [],
     algorithm: concept.algorithm || '',
     editable: true,

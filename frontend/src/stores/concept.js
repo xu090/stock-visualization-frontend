@@ -70,6 +70,8 @@ function normalizeConcept(item = {}) {
     algorithm: item.algorithm || '',
     editable: !!item.editable,
     favorite: !!item.favorite,
+    enabled: item.enabled !== false,
+    isSystem: item.isSystem !== false,
     source: item.source || '',
     change: toNullableNumber(change),
     changeAmount: toNullableNumber(changeAmount),
@@ -328,7 +330,6 @@ export const useConceptStore = defineStore('concept', {
       const row = await apiPost('/api/concepts', {
         id: normId(concept.id),
         name: concept.name,
-        description: concept.description || '',
         stockCodes: Array.isArray(concept.stockCodes) ? concept.stockCodes : [],
         algorithm: concept.algorithm || '',
         favorite: !!concept.favorite
@@ -342,7 +343,6 @@ export const useConceptStore = defineStore('concept', {
       const id = normId(concept.id)
       const row = await apiPatch(`/api/concepts/${encodeURIComponent(id)}`, {
         name: concept.name,
-        description: concept.description,
         stockCodes: concept.stockCodes,
         algorithm: concept.algorithm,
         favorite: concept.favorite
